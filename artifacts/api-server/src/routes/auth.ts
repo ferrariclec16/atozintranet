@@ -24,6 +24,7 @@ router.post("/auth/login", (req, res) => {
   }
 
   req.session.username = employee.username;
+  req.session.role = employee.role;
 
   res.json({
     success: true,

@@ -1,0 +1,216 @@
+from flask import Flask, request, jsonify, render_template_string
+from pymongo import MongoClient
+import os, datetime
+import certifi
+
+app = Flask(__name__)
+
+# ---------------------------------------------------------
+# [1] DB 설정 (AtoZ MongoDB URI 적용)
+# ---------------------------------------------------------
+MONGO_URI = "mongodb+srv://ferrariclec16_db_user:I80d6V6pr7BZgcRf@atoz.6d6u1qv.mongodb.net/?appName=AtoZ"
+try:
+    client = MongoClient(MONGO_URI, tlsCAFile=certifi.where())
+    db = client['license_management']
+    col_keys = db['keys']
+    col_issues = db['issues']
+    col_logins = db['logins']
+    print("✅ MongoDB 연결 성공!")
+except Exception as e:
+    print(f"❌ MongoDB 연결 실패: {e}")
+
+# ---------------------------------------------------------
+# [2] 관리자 웹페이지 접속 인증 계정 설정
+# ---------------------------------------------------------
+ADMIN_ID, ADMIN_PW = "admin", "atoz1234"
+def check_auth(auth): return auth and auth.username == ADMIN_ID and auth.password == ADMIN_PW
+
+# ---------------------------------------------------------
+# [3] 데이터 추출 함수 (페이징 처리)
+# ---------------------------------------------------------
+def get_paginated_data(collection, page, limit=10):
+    total = collection.count_documents({})
+    data = list(collection.find().sort("_id", -1).skip((page - 1) * limit).limit(limit))
+    return data, (total + limit - 1) // limit
+
+# ---------------------------------------------------------
+# [4] 관리자 웹페이지 HTML 템플릿
+# ---------------------------------------------------------
+ADMIN_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>AtoZ 부품 검색기</title>
+    <style>
+        body { font-family: 'Pretendard', sans-serif; background: #f0f2f5; padding: 20px; color: #333; }
+        .container { max-width: 1100px; margin: auto; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        .tabs { display: flex; gap: 5px; margin-bottom: 20px; border-bottom: 2px solid #eee; }
+        .tab { padding: 12px 20px; cursor: pointer; border: none; background: #f8f9fa; font-weight: bold; border-radius: 8px 8px 0 0; }
+        .tab.active { background: #1a73e8; color: white; }
+        .tab-content { display: none; padding: 20px 0; }
+        .tab-content.active { display: block; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 12px; border-bottom: 1px solid #eee; text-align: left; }
+        th { background: #f8f9fa; font-size: 14px; }
+        .pagination { display: flex; justify-content: center; gap: 8px; margin-top: 25px; }
+        .page-link { padding: 8px 14px; border: 1px solid #ddd; text-decoration: none; color: #555; border-radius: 4px; }
+        .page-link.active { background: #1a73e8; color: white; }
+        .btn { padding: 5px 10px; cursor: pointer; border-radius: 4px; border: none; font-size: 12px; color: white; }
+        .btn-reset { background: #ff9800; }
+        .btn-delete { background: #ea4335; margin-left: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2 style="color: #1a73e8;">AtoZ 부품 검색기</h2>
+        <div class="tabs">
+            <button class="tab" id="btn-tab1" onclick="openTab('tab1')">1. 신규 등록</button>
+            <button class="tab" id="btn-tab2" onclick="openTab('tab2')">2. 라이선스 관리</button>
+            <button class="tab" id="btn-tab3" onclick="openTab('tab3')">3. 접속 기록</button>
+            <button class="tab" id="btn-tab4" onclick="openTab('tab4')">4. 보안 모니터링</button>
+        </div>
+
+        <div id="tab1" class="tab-content">
+            <h3>🆕 신규 라이선스 발급</h3>
+            <form action="/admin/add" method="post" style="display:flex; gap:10px;">
+                <input type="text" name="user_name" placeholder="직원/고객 이름" required style="padding:10px; flex:1; border: 1px solid #ccc; border-radius: 5px;">
+                <input type="text" name="new_key" placeholder="발급할 라이선스 키 (예: ATOZ-2026-001)" required style="padding:10px; flex:1; border: 1px solid #ccc; border-radius: 5px;">
+                <button type="submit" style="padding:10px 20px; background:#1a73e8; color:white; border:none; border-radius:5px; cursor:pointer; font-weight: bold;">등록하기</button>
+            </form>
+        </div>
+
+        <div id="tab2" class="tab-content">
+            <h3>📋 라이선스 현황 ({{ p2 }}/{{ t2 }} 페이지)</h3>
+            <table>
+                <tr><th>사용자명</th><th>라이선스 키</th><th>등록된 기기ID(HWID)</th><th>관리 기능</th></tr>
+                {% for item in d2 %}
+                <tr>
+                    <td><b>{{ item.user_name }}</b></td>
+                    <td><code style="background:#f1f3f5; padding:3px 6px; border-radius:4px;">{{ item.license_key }}</code></td>
+                    <td><small style="color:#666;">{{ item.hwid if item.hwid else '미등록 (최초 접속 대기)' }}</small></td>
+                    <td>
+                        <a href="/admin/reset?key={{ item.license_key }}"><button type="button" class="btn btn-reset">기기 초기화</button></a>
+                        <a href="/admin/delete?key={{ item.license_key }}" onclick="return confirm('정말 삭제하시겠습니까?')"><button type="button" class="btn btn-delete">완전 삭제</button></a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </table>
+            {{ r2 | safe }}
+        </div>
+
+        <div id="tab3" class="tab-content">
+            <h3>✅ 접속 성공 로그 ({{ p3 }}/{{ t3 }} 페이지)</h3>
+            <table>
+                <tr><th>접속 시간 (KST)</th><th>사용자명</th><th>사용된 키</th><th>접속 기기ID</th></tr>
+                {% for log in d3 %}
+                <tr><td>{{ log.time }}</td><td>{{ log.user_name }}</td><td>{{ log.license_key }}</td><td><small>{{ log.hwid }}</small></td></tr>
+                {% endfor %}
+            </table>
+            {{ r3 | safe }}
+        </div>
+
+        <div id="tab4" class="tab-content">
+            <h3>🚨 보안 차단 로그 ({{ p4 }}/{{ t4 }} 페이지)</h3>
+            <table>
+                <tr><th>차단 시간 (KST)</th><th>사용자명</th><th>정상 등록 기기ID</th><th>불법 시도 기기ID</th></tr>
+                {% for is in d4 %}
+                <tr><td>{{ is.time }}</td><td>{{ is.user_name }}</td><td><small>{{ is.registered_hwid }}</small></td><td style="color:#d93025; font-weight:bold;"><small>{{ is.attempted_hwid }}</small></td></tr>
+                {% endfor %}
+            </table>
+            {{ r4 | safe }}
+        </div>
+    </div>
+
+    <script>
+        function openTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+            document.getElementById('btn-' + tabId).classList.add('active');
+            const url = new URL(window.location);
+            url.searchParams.set('active_tab', tabId);
+            window.history.replaceState({}, '', url);
+        }
+        window.onload = () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const active = urlParams.get('active_tab') || 'tab1';
+            openTab(active);
+        };
+    </script>
+</body>
+</html>
+"""
+
+def render_pagination(current, total, tab_id):
+    if total <= 1: return ""
+    html = '<div class="pagination">'
+    for i in range(1, total + 1):
+        active = "active" if i == current else ""
+        html += f'<a href="?{tab_id}_page={i}&active_tab={tab_id}" class="page-link {active}">{i}</a>'
+    html += '</div>'
+    return html
+
+# ---------------------------------------------------------
+# [5] 라우팅: 관리자 웹페이지 엔드포인트
+# ---------------------------------------------------------
+@app.route('/admin')
+def admin_page():
+    auth = request.authorization
+    if not check_auth(auth): return "Unauthorized", 401, {'WWW-Authenticate': 'Basic'}
+    p2, p3, p4 = int(request.args.get('tab2_page', 1)), int(request.args.get('tab3_page', 1)), int(request.args.get('tab4_page', 1))
+    d2, t2 = get_paginated_data(col_keys, p2); d3, t3 = get_paginated_data(col_logins, p3); d4, t4 = get_paginated_data(col_issues, p4)
+    return render_template_string(ADMIN_HTML, d2=d2, t2=t2, p2=p2, r2=render_pagination(p2, t2, 'tab2'), d3=d3, t3=t3, p3=p3, r3=render_pagination(p3, t3, 'tab3'), d4=d4, t4=t4, p4=p4, r4=render_pagination(p4, t4, 'tab4'))
+
+@app.route('/admin/add', methods=['POST'])
+def add_key():
+    u_name, n_key = request.form.get('user_name'), request.form.get('new_key')
+    if u_name and n_key: col_keys.update_one({"license_key": n_key}, {"$set": {"license_key": n_key, "user_name": u_name, "hwid": ""}}, upsert=True)
+    return "<script>location.href='/admin?active_tab=tab2';</script>"
+
+@app.route('/admin/reset', methods=['GET'])
+def reset_key():
+    key = request.args.get('key')
+    if key:
+        key = str(key).strip()
+        query = {"$or": [{"license_key": key}, {"license_key": int(key) if key.isdigit() else key}]}
+        col_keys.update_one(query, {"$set": {"hwid": ""}})
+    return f"<script>location.href='/admin?active_tab=tab2&_t={datetime.datetime.now().timestamp()}';</script>"
+
+@app.route('/admin/delete', methods=['GET'])
+def delete_key():
+    key = request.args.get('key')
+    if key:
+        key = str(key).strip()
+        query = {"$or": [{"license_key": key}, {"license_key": int(key) if key.isdigit() else key}]}
+        col_keys.delete_one(query)
+    return f"<script>location.href='/admin?active_tab=tab2&_t={datetime.datetime.now().timestamp()}';</script>"
+
+# ---------------------------------------------------------
+# [6] 라우팅: 클라이언트(AtoZ.py) 통신용 API
+# ---------------------------------------------------------
+@app.route('/api/verify', methods=['POST'])
+def verify():
+    data = request.json
+    l_key, hwid = data.get('license_key'), data.get('hwid')
+    doc = col_keys.find_one({"license_key": l_key})
+    
+    if not doc: 
+        return jsonify({"status": "error", "message": "존재하지 않거나 삭제된 라이선스입니다."})
+    
+    kst = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d %H:%M:%S")
+    
+    if doc['hwid'] == "" or doc['hwid'] == hwid:
+        if doc['hwid'] == "": 
+            col_keys.update_one({"license_key": l_key}, {"$set": {"hwid": hwid}})
+        col_logins.insert_one({"time": kst, "license_key": l_key, "user_name": doc['user_name'], "hwid": hwid})
+        return jsonify({"status": "success"})
+    
+    col_issues.insert_one({"time": kst, "license_key": l_key, "user_name": doc['user_name'], "registered_hwid": doc['hwid'], "attempted_hwid": hwid})
+    return jsonify({"status": "error", "message": "다른 기기에 등록된 라이선스입니다. 관리자에게 기기 초기화를 요청하세요."})
+
+# Vercel 환경에서는 이 아래 부분이 실행되지 않고 무시되므로 그대로 두셔도 무방합니다.
+if __name__ == '__main__':
+    print("🚀 AtoZ 통합 관리자 서버가 포트 5001에서 시작되었습니다.")
+    print("👉 관리자 페이지 접속: http://127.0.0.1:5001/admin")
+    app.run(host='0.0.0.0', port=5001)
