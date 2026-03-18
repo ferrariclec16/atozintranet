@@ -8,3 +8,31 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface LoginRequest {
+  username: string;
+  password: string;
+}
+
+export interface UserInfo {
+  username: string;
+  displayName: string;
+  role: string;
+}
+
+export interface LoginResponse {
+  success: boolean;
+  user: UserInfo;
+}
+
+export interface LogoutResponse {
+  success: boolean;
+}
+
+export interface MeResponse {
+  user: UserInfo | null;
+}
+
+export interface ErrorResponse {
+  error: string;
+}

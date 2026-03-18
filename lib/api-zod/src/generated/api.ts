@@ -8,9 +8,46 @@
 import * as zod from "zod";
 
 /**
- * Returns server health status
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
+});
+
+/**
+ * @summary Login with username and password
+ */
+export const LoginBody = zod.object({
+  username: zod.string(),
+  password: zod.string(),
+});
+
+export const LoginResponse = zod.object({
+  success: zod.boolean(),
+  user: zod.object({
+    username: zod.string(),
+    displayName: zod.string(),
+    role: zod.string(),
+  }),
+});
+
+/**
+ * @summary Logout current session
+ */
+export const LogoutResponse = zod.object({
+  success: zod.boolean(),
+});
+
+/**
+ * @summary Get current user info
+ */
+export const GetMeResponse = zod.object({
+  user: zod.union([
+    zod.object({
+      username: zod.string(),
+      displayName: zod.string(),
+      role: zod.string(),
+    }),
+    zod.null(),
+  ]),
 });

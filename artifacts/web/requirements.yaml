@@ -1,0 +1,18 @@
+packages:
+  "framer-motion": "For premium smooth page transitions and micro-interactions"
+  "@hookform/resolvers": "For Zod form validation"
+  "react-hook-form": "For robust form state management"
+  "zod": "For schema validation of auth endpoints"
+  "lucide-react": "For beautiful consistent iconography"
+
+images:
+  - path: "artifacts/web/public/images/login-bg.png"
+    description: "Deep dark professional corporate abstract background, subtle blue and indigo gradients, very dark, minimalist glassmorphism style, no text, premium aesthetic"
+    aspect_ratio: "16:9"
+  - path: "artifacts/web/public/images/logo.png"
+    description: "Minimalist corporate logo mark in cyan and indigo, abstract geometric shape, transparent background"
+    aspect_ratio: "1:1"
+
+notes:
+  - "Authentication uses a custom use-auth.ts hook that directly calls the API with fetch and credentials: 'include' as requested, bypassing generated hooks to ensure proper cookie handling."
+  - "The application forces a dark theme for a premium corporate look."
