@@ -1,0 +1,210 @@
+import os
+import sys
+import time
+import uuid
+import socket
+import webbrowser
+import threading
+import requests
+import json
+from flask import Flask, request, jsonify, render_template, url_for
+import tkinter as tk
+from tkinter import messagebox
+
+# ---------------------------------------------------------
+# [보안 설정] 빌드 환경 대응 및 절대 경로 세팅 (.exe 대응)
+# ---------------------------------------------------------
+if getattr(sys, 'frozen', False):
+    template_folder = os.path.join(sys._MEIPASS, 'templates')
+    static_folder = os.path.join(sys._MEIPASS, 'static')
+else:
+    template_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates')
+    static_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
+
+app = Flask(__name__, template_folder=template_folder, static_folder=static_folder)
+
+NEXAR_CLIENT_ID = "ef37c191-34f7-4b08-80da-99b8bff04cfc"
+NEXAR_CLIENT_SECRET = "n0L1mKSFSEaDHNnP-klrKaXk_uJq4Qgw4i7g"
+
+# ---------------------------------------------------------
+# [보안 모듈] 라이선스 및 HWID 인증 로직 (클라우드 서버 연동)
+# ---------------------------------------------------------
+def get_machine_hwid():
+    return str(uuid.getnode())
+
+def check_server(key):
+    hwid = get_machine_hwid()
+    try:
+        # 타임아웃을 15초로 늘려 클라우드 환경에서의 응답 지연 대비
+        response = requests.post(
+            'https://adminatoz.com/api/verify', 
+            json={'license_key': key, 'hwid': hwid},
+            timeout=15 
+        )
+        if response.status_code == 200:
+            result = response.json()
+            if result.get('status') == 'success': 
+                return True
+            else:
+                print(f"❌ 인증 실패: {result.get('message')}")
+                return False
+        else: 
+            print(f"❌ 서버 응답 오류: 상태 코드 {response.status_code}")
+            return False
+    except requests.exceptions.ConnectionError:
+        print("❌ 연결 오류: 관리자 서버(adminatoz.com)에 접속할 수 없습니다. 도메인 전파가 완료되었는지, 혹은 인터넷 연결을 확인하세요.")
+        return False
+    except requests.exceptions.Timeout:
+        print("❌ 타임아웃 오류: 관리자 서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.")
+        return False
+    except Exception as e:
+        print(f"❌ 알 수 없는 오류 발생: {e}")
+        return False
+
+def show_custom_login_gui():
+    result_status = {"success": False}
+    login_root = tk.Tk()
+    login_root.title("AtoZ 보안 인증")
+    login_root.configure(bg="#f4f5f7")
+    login_root.attributes("-topmost", True)
+    login_root.resizable(False, False)
+
+    w, h = 400, 250
+    login_root.geometry(f'{w}x{h}+{int(login_root.winfo_screenwidth()/2-w/2)}+{int(login_root.winfo_screenheight()/2-h/2)}')
+
+    tk.Label(login_root, text="AtoZ 부품 검색기", font=("Pretendard", 18, "bold"), fg="#1a73e8", bg="#f4f5f7", pady=20).pack()
+    tk.Label(login_root, text="라이선스 키를 입력해주세요", font=("Pretendard", 10), fg="#555", bg="#f4f5f7").pack()
+
+    entry_key = tk.Entry(login_root, font=("Consolas", 12), width=30, justify='center', bd=1, relief="solid")
+    entry_key.pack(pady=15, ipady=5)
+    entry_key.focus_set()
+
+    def on_confirm(event=None):
+        key_input = entry_key.get().strip()
+        if not key_input:
+            messagebox.showwarning("알림", "키를 입력해주세요.")
+            return
+
+        # 버튼 비활성화로 중복 클릭 방지 (옵션)
+        btn_confirm.config(state="disabled", text="인증 중...")
+        login_root.update()
+
+        if check_server(key_input):
+            with open('saved_license.key', 'w') as f: f.write(key_input)
+            result_status["success"] = True
+            login_root.destroy()
+        else:
+            messagebox.showerror("인증 실패", "유효하지 않은 라이선스 키이거나 접속 오류가 발생했습니다. (터미널 로그 확인)")
+            btn_confirm.config(state="normal", text="인증하기")
+
+    btn_confirm = tk.Button(login_root, text="인증하기", command=on_confirm, font=("Pretendard", 11, "bold"), bg="#1a73e8", fg="white", width=20, bd=0, cursor="hand2")
+    btn_confirm.pack(pady=10, ipady=5)
+    login_root.bind('<Return>', on_confirm)
+    login_root.mainloop()
+    return result_status["success"]
+
+def verify_and_login():
+    if os.path.exists('saved_license.key'):
+        with open('saved_license.key', 'r') as f: saved_key = f.read().strip()
+        if saved_key and check_server(saved_key): return True
+    return show_custom_login_gui()
+
+# ---------------------------------------------------------
+# [API 모듈] Nexar (Octopart) 데이터 통신
+# ---------------------------------------------------------
+def get_nexar_token():
+    url = "https://identity.nexar.com/connect/token"
+    data = {"grant_type": "client_credentials", "client_id": NEXAR_CLIENT_ID, "client_secret": NEXAR_CLIENT_SECRET}
+    response = requests.post(url, data=data)
+    response.raise_for_status()
+    return response.json()["access_token"]
+
+def fetch_part_data(part_number):
+    try: token = get_nexar_token()
+    except Exception as e: return {"status": "error", "message": f"토큰 발급 실패: {str(e)}"}
+
+    url = "https://api.nexar.com/graphql"
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    query = """
+    query Search($q: String!) { 
+        supSearch(q: $q) { 
+            results { 
+                part { 
+                    mpn 
+                    sellers { 
+                        company { name } 
+                        offers { 
+                            clickUrl
+                            sku
+                            inventoryLevel 
+                            moq 
+                            packaging 
+                            prices { price quantity } 
+                        } 
+                    } 
+                } 
+            } 
+        } 
+    }
+    """
+    try:
+        response = requests.post(url, json={"query": query, "variables": {"q": part_number}}, headers=headers)
+        response.raise_for_status()
+        
+        raw_data = response.json()
+        
+        try:
+            results = raw_data.get('data', {}).get('supSearch', {}).get('results', [])
+            for result in results:
+                part = result.get('part', {})
+                if not part: continue
+                
+                filtered_sellers = []
+                for seller in part.get('sellers', []):
+                    filtered_offers = []
+                    for offer in seller.get('offers', []):
+                        stock = offer.get('inventoryLevel', 0)
+                        if stock and stock > 0:
+                            filtered_offers.append(offer)
+                    
+                    if filtered_offers:
+                        seller['offers'] = filtered_offers
+                        filtered_sellers.append(seller)
+                        
+                part['sellers'] = filtered_sellers
+        except Exception as parse_err:
+            print(f"데이터 필터링 중 오류 발생: {parse_err}")
+
+        return {"status": "success", "data": raw_data}
+    except Exception as e:
+        return {"status": "error", "message": f"데이터 검색 실패: {str(e)}"}
+
+# ---------------------------------------------------------
+# [웹 서버 라우팅]
+# ---------------------------------------------------------
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/api/search', methods=['POST'])
+def api_search():
+    return jsonify(fetch_part_data(request.json.get('part_number')))
+
+@app.route('/api/shutdown', methods=['POST'])
+def shutdown():
+    os._exit(0)
+    return jsonify({"status": "success"})
+
+def open_browser(port):
+    time.sleep(1.5)
+    webbrowser.open(f"http://localhost:{port}")
+
+if __name__ == '__main__':
+    if verify_and_login():
+        print("✅ 인증 성공. AtoZ 클라이언트 서버를 시작합니다.")
+        threading.Thread(target=open_browser, args=(9001,), daemon=True).start()
+        app.run(host='0.0.0.0', port=9001)
+    else:
+        print("❌ 인증 실패 또는 창 닫힘. 프로그램을 종료합니다.")
+        sys.exit()
