@@ -1,0 +1,393 @@
+let globalExcelData = [];
+
+async function shutdownApp() {
+    if(confirm("프로그램을 완전히 종료하시겠습니까?")) {
+        try { await fetch('/api/shutdown', { method: 'POST' }); } catch(e) {}
+        window.close(); document.body.innerHTML = "<h2 style='text-align:center; margin-top:50px; color:#666;'>종료되었습니다.</h2>";
+    }
+}
+
+function openExcelModal() {
+    document.getElementById('excelModal').style.display = 'flex';
+    document.getElementById('modal-rows-container').innerHTML = ''; 
+    addModalRow(); 
+}
+function closeExcelModal() { document.getElementById('excelModal').style.display = 'none'; }
+
+function addModalRow() {
+    const container = document.getElementById('modal-rows-container');
+    const row = document.createElement('div');
+    row.className = 'modal-row';
+    row.innerHTML = `
+        <input type="text" placeholder="부품명" class="modal-input-part">
+        <input type="number" placeholder="필요 수량" class="modal-input-qty" onkeydown="handleTab(event, this)">
+        <button class="btn-delete" onclick="this.parentElement.remove()">❌</button>
+    `;
+    container.appendChild(row);
+    row.querySelector('.modal-input-part').focus();
+}
+
+function handleTab(e, element) {
+    if (e.key === 'Tab' && !e.shiftKey) {
+        const rows = document.querySelectorAll('.modal-row');
+        if (element.parentElement === rows[rows.length - 1]) {
+            e.preventDefault(); addModalRow();
+        }
+    }
+}
+
+function downloadCreatedExcel() {
+    const rows = document.querySelectorAll('.modal-row');
+    let wsData = [["부품명", "수량"]];
+    let hasData = false;
+    rows.forEach(row => {
+        const part = row.querySelector('.modal-input-part').value.trim();
+        const qty = parseInt(row.querySelector('.modal-input-qty').value.trim());
+        if (part !== "") { wsData.push([part, isNaN(qty) || qty <= 0 ? 1 : qty]); hasData = true; }
+    });
+    if (!hasData) return alert("입력된 데이터가 없습니다.");
+    let wb = XLSX.utils.book_new();
+    let ws = XLSX.utils.aoa_to_sheet(wsData);
+    ws['!cols'] = [ {wch: 25}, {wch: 10} ];
+    XLSX.utils.book_append_sheet(wb, ws, "검색리스트");
+    XLSX.writeFile(wb, "AtoZ_검색용_부품리스트.xlsx");
+    closeExcelModal();
+}
+
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('excelFileInput');
+if(dropZone) {
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault(); dropZone.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) { fileInput.files = e.dataTransfer.files; processExcelFile(e.dataTransfer.files[0]); }
+    });
+}
+function handleExcelUpload(event) { if(event.target.files[0]) processExcelFile(event.target.files[0]); event.target.value = ''; }
+
+// 핵심 계산 로직
+function calculateBestCombinations(offers, targetQty) {
+    let combos = [];
+    const getCost = (offer, qty) => {
+        let p = offer.prices[0].price;
+        for(let pb of offer.prices) { if (qty >= pb.quantity) p = pb.price; }
+        return p * qty;
+    };
+
+    let valids = offers.filter(o => o.stock > 0 && o.prices && o.prices.length > 0);
+
+    valids.forEach(o => {
+        let take = Math.max(targetQty, o.moq);
+        if (o.stock >= take) {
+            combos.push({ cost: getCost(o, take), desc: `<span>${o.company}</span> (<b style="color:#333;">${take.toLocaleString()}개</b> 단일구매)` });
+        }
+    });
+
+    for(let i=0; i<valids.length; i++) {
+        for(let j=0; j<valids.length; j++) {
+            if(i===j) continue;
+            let o1 = valids[i], o2 = valids[j];
+            let take1 = o1.stock; 
+            if (take1 >= targetQty || take1 < o1.moq) continue; 
+            let rem = targetQty - take1;
+            let take2 = Math.max(rem, o2.moq);
+            if (o2.stock >= take2) {
+                let cost = getCost(o1, take1) + getCost(o2, take2);
+                combos.push({ cost: cost, desc: `<span>${o1.company}</span> (<b style="color:#333;">${take1.toLocaleString()}개</b>) &nbsp;+&nbsp; <span>${o2.company}</span> (<b style="color:#333;">${take2.toLocaleString()}개</b>)` });
+            }
+        }
+    }
+
+    for(let i=0; i<valids.length; i++) {
+        for(let j=0; j<valids.length; j++) {
+            for(let k=0; k<valids.length; k++) {
+                if(i===j || j===k || i===k) continue;
+                let o1 = valids[i], o2 = valids[j], o3 = valids[k];
+                let take1 = o1.stock;
+                if (take1 >= targetQty || take1 < o1.moq) continue;
+                let rem1 = targetQty - take1;
+                let take2 = o2.stock;
+                if (take2 >= rem1 || take2 < o2.moq) continue;
+                let rem2 = rem1 - take2;
+                let take3 = Math.max(rem2, o3.moq);
+                if (o3.stock >= take3) {
+                    let cost = getCost(o1, take1) + getCost(o2, take2) + getCost(o3, take3);
+                    combos.push({ cost: cost, desc: `<span>${o1.company}</span> (<b style="color:#333;">${take1.toLocaleString()}개</b>) + <span>${o2.company}</span> (<b style="color:#333;">${take2.toLocaleString()}개</b>) + <span>${o3.company}</span> (<b style="color:#333;">${take3.toLocaleString()}개</b>)` });
+                }
+            }
+        }
+    }
+
+    combos.sort((a,b) => a.cost - b.cost);
+    let uniqueCombos = [];
+    let seen = new Set();
+    for(let c of combos) {
+        if(!seen.has(c.desc)) {
+            seen.add(c.desc);
+            uniqueCombos.push(c);
+            if(uniqueCombos.length === 3) break;
+        }
+    }
+    return uniqueCombos;
+}
+
+async function fetchAndAnalyze(partInput, targetQty) {
+    try {
+        const response = await fetch('/api/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ part_number: partInput }) });
+        const resData = await response.json();
+        let analyzedList = [];
+        let rawOffersForCombinations = [];
+
+        if (resData.status === 'success') {
+            const parts = resData.data?.data?.supSearch?.results;
+            if (parts && parts.length > 0) {
+                parts.forEach(resultItem => {
+                    const targetPart = resultItem.part;
+                    if (!targetPart) return;
+                    const sellers = targetPart.sellers || [];
+                    sellers.forEach(seller => {
+                        const companyName = seller.company?.name || "알 수 없는 유통사";
+                        const offers = seller.offers || [];
+                        offers.forEach(offer => {
+                            const clickUrl = offer.clickUrl || "#";
+                            const moq = offer.moq || 1;
+                            const stock = offer.inventoryLevel || 0;
+                            let packaging = offer.packaging || "N/A";
+
+                            rawOffersForCombinations.push({ company: companyName, stock: stock, moq: moq, prices: offer.prices || [] });
+
+                            let initialBuyQty = Math.max(targetQty, moq);
+                            let bestQty = initialBuyQty;
+                            let bestTotal = Infinity;
+                            let unitPrice = 0;
+                            let priceBreaksHtml = "-"; 
+
+                            if (offer.prices && offer.prices.length > 0) {
+                                priceBreaksHtml = offer.prices.map(p => `<span>${p.quantity.toLocaleString()}</span> $${p.price.toFixed(4)}`).join('<br>');
+                                let validPrices = offer.prices.filter(p => p.quantity <= initialBuyQty);
+                                if(validPrices.length > 0) {
+                                    unitPrice = validPrices[validPrices.length - 1].price;
+                                    bestTotal = initialBuyQty * unitPrice;
+                                }
+                            }
+
+                            if (bestTotal !== Infinity) {
+                                analyzedList.push({
+                                    company: companyName, clickUrl: clickUrl, stock: stock, moq: moq, packaging: packaging,
+                                    priceBreaksHtml: priceBreaksHtml, buyQty: bestQty, unitPrice: unitPrice, totalPrice: bestTotal
+                                });
+                            }
+                        });
+                    });
+                });
+                
+                // 가격 오름차순으로 정렬 후 최상위 10개만 남기기
+                analyzedList.sort((a, b) => a.totalPrice - b.totalPrice);
+                analyzedList = analyzedList.slice(0, 10);
+            }
+        }
+        const top3 = calculateBestCombinations(rawOffersForCombinations, targetQty);
+        return { list: analyzedList, top3: top3, rawOffers: rawOffersForCombinations };
+    } catch (error) {
+        return { list: [], top3: [], rawOffers: [] };
+    }
+}
+
+// ---------------------------------------------------------
+// UI 렌더링 및 커스텀 로직
+// ---------------------------------------------------------
+function createAccordionItem(partName, targetQty, resultData, arrayIndex) {
+    const accArea = document.getElementById('accordion-area');
+    const itemId = 'acc-' + Math.random().toString(36).substr(2, 9);
+    const analyzedList = resultData.list;
+    const top3 = resultData.top3;
+    
+    const statusHtml = analyzedList.length > 0 ? `<span class="status-badge status-done">완료</span>` : `<span class="status-badge status-fail">결과 없음</span>`;
+    
+    // 1. 기존 시스템 추천 (Top 3) UI
+    let top3Html = '';
+    if (top3.length > 0) {
+        top3Html = `<div class="top3-container">
+            <h4>💡 시스템 기본 추천 조합 (Top 3)</h4>`;
+        top3.forEach((combo, idx) => {
+            const rankClass = idx === 0 ? 'rank-1' : (idx === 1 ? 'rank-2' : 'rank-3');
+            top3Html += `<div class="top3-item ${rankClass}">
+                <span style="color:#555;">${combo.desc}</span>
+                <span class="top3-price">총액 $${combo.cost.toFixed(2)}</span>
+            </div>`;
+        });
+        top3Html += `</div>`;
+    }
+
+    // 2. 커스텀 결과가 표시될 빈 공간 (초기에는 숨김)
+    let customTop3Html = `<div id="custom-panel-${itemId}" class="custom-top3-container" style="display:none;"></div>`;
+
+    // 3. 커스텀 찾기 버튼 (검색 결과 위에 배치)
+    let customBtnHtml = '';
+    if (analyzedList.length > 0) {
+        customBtnHtml = `<button class="btn-calc-custom" onclick="generateCustomTop3('${itemId}', ${arrayIndex}, ${targetQty})">✅ 내가 선택한 업체로 최적 조합 찾기</button>`;
+    }
+
+    // 4. 검색 결과 테이블 (체크박스 기본 해제 적용)
+    let tbodyHtml = '';
+    if (analyzedList.length === 0) {
+        tbodyHtml = `<tr><td colspan="6" style="text-align:center; padding: 20px;">조건에 맞는 유통사가 없습니다.</td></tr>`;
+    } else {
+        analyzedList.forEach((item, idx) => {
+            // 체크박스 태그에서 'checked' 속성을 제거하여 기본으로 해제된 상태를 만듭니다.
+            const checkboxHtml = `<input type="checkbox" class="chk-vendor chk-${itemId}" value="${item.company}">`;
+            tbodyHtml += `
+                <tr>
+                    <td>${checkboxHtml} <b>${item.company}</b></td>
+                    <td><div class="badge-stock">${item.stock.toLocaleString()}</div></td>
+                    <td>${item.moq.toLocaleString()}</td>
+                    <td class="price-breaks">${item.priceBreaksHtml}</td>
+                    <td><b style="font-size: 14px;">${item.buyQty.toLocaleString()}</b></td>
+                    <td class="total-price">$${item.totalPrice.toFixed(2)}</td>
+                </tr>
+            `;
+        });
+    }
+
+    const itemHtml = `
+        <div class="accordion-item">
+            <div class="accordion-header" onclick="toggleAccordion('${itemId}')">
+                <span>🔍 ${partName} <span style="font-size:12px; color:#666;">(필요: ${targetQty}개)</span></span>
+                ${statusHtml}
+            </div>
+            <div class="accordion-content" id="${itemId}">
+                ${top3Html}
+                ${customTop3Html}
+                ${customBtnHtml}
+                <table>
+                    <thead>
+                        <tr>
+                            <th width="20%">Distributor</th><th width="10%">Stock</th><th width="10%">Min Qty</th>
+                            <th width="30%">Price Breaks</th><th width="10%">Buy Qty</th><th width="20%">Total ($)</th>
+                        </tr>
+                    </thead>
+                    <tbody>${tbodyHtml}</tbody>
+                </table>
+            </div>
+        </div>
+    `;
+    accArea.innerHTML += itemHtml;
+}
+
+// 🔥 사용자가 직접 체크한 업체만 추려서 재계산하는 로직
+function generateCustomTop3(itemId, arrayIndex, targetQty) {
+    const panel = document.getElementById(`custom-panel-${itemId}`);
+    const checkboxes = document.querySelectorAll(`.chk-${itemId}:checked`);
+    
+    // 체크된 업체 이름 수집
+    const selectedCompanies = Array.from(checkboxes).map(cb => cb.value);
+    
+    if (selectedCompanies.length === 0) {
+        alert("업체를 하나 이상 선택해주세요.");
+        return;
+    }
+
+    // 전역 데이터에서 해당 부품의 원본 재고 데이터(rawOffers)를 가져옴
+    const rawOffers = globalExcelData[arrayIndex].rawOffers;
+    
+    // 체크된 업체만 필터링
+    const filteredOffers = rawOffers.filter(offer => selectedCompanies.includes(offer.company));
+    
+    // 필터링된 업체로 분할 구매 조합 재계산
+    const customTop3 = calculateBestCombinations(filteredOffers, targetQty);
+
+    // 결과 렌더링
+    let html = `<h4>✅ 이용자 커스텀 추천 조합 (Top 3)</h4>`;
+    if (customTop3.length > 0) {
+        customTop3.forEach((combo, idx) => {
+            const rankClass = idx === 0 ? 'custom-rank-1' : (idx === 1 ? 'custom-rank-2' : 'custom-rank-3');
+            html += `<div class="top3-item ${rankClass}">
+                <span style="color:#333;">${combo.desc}</span>
+                <span class="top3-price">총액 $${combo.cost.toFixed(2)}</span>
+            </div>`;
+        });
+    } else {
+        html += `<div class="top3-item" style="color:#d93025; border-left: 4px solid #d93025;">선택하신 업체들의 재고나 조합만으로는 필요 수량을 채울 수 없습니다.</div>`;
+    }
+    
+    panel.innerHTML = html;
+    panel.style.display = 'block';
+}
+
+function toggleAccordion(id) {
+    const content = document.getElementById(id);
+    content.style.display = content.style.display === "block" ? "none" : "block";
+}
+
+async function searchSinglePart() {
+    const partInput = document.getElementById('partInput').value.trim();
+    const targetQty = parseInt(document.getElementById('qtyInput').value.trim()) || 1; 
+    if (!partInput) return alert("부품 번호를 입력해주세요.");
+
+    const accArea = document.getElementById('accordion-area');
+    document.getElementById('loading').style.display = 'block'; 
+    accArea.style.display = 'block'; accArea.innerHTML = ''; 
+    globalExcelData = []; 
+
+    const resultData = await fetchAndAnalyze(partInput, targetQty);
+    
+    // 글로벌 배열에 원본 데이터(rawOffers)까지 저장하여 나중에 커스텀 계산에 사용
+    globalExcelData.push({ partName: partInput, qty: targetQty, data: resultData.list, top3: resultData.top3, rawOffers: resultData.rawOffers });
+    
+    createAccordionItem(partInput, targetQty, resultData, 0); // 0은 globalExcelData의 인덱스
+    
+    const firstContent = accArea.querySelector('.accordion-content');
+    if(firstContent) firstContent.style.display = "block";
+    
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('btnBatchExcel').disabled = false;
+}
+
+function processExcelFile(file) {
+    const reader = new FileReader();
+    reader.onload = async function(e) {
+        const data = new Uint8Array(e.target.result);
+        const worksheet = XLSX.read(data, { type: 'array' }).Sheets[XLSX.read(data, { type: 'array' }).SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        
+        let partsToSearch = [];
+        for (let i = 0; i < jsonData.length; i++) {
+            const row = jsonData[i];
+            if (row.length > 0 && row[0] && String(row[0]).trim() !== "부품명") {
+                let qty = parseInt(row[1]);
+                partsToSearch.push({ partName: String(row[0]).trim(), qty: isNaN(qty) || qty <= 0 ? 1 : qty });
+            }
+        }
+        if(partsToSearch.length === 0) return alert("엑셀 파일에서 데이터를 찾을 수 없습니다.");
+        await startBatchSearch(partsToSearch);
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+async function startBatchSearch(partsList) {
+    const loading = document.getElementById('loading'), accArea = document.getElementById('accordion-area');
+    loading.style.display = 'block'; accArea.style.display = 'block'; accArea.innerHTML = ''; globalExcelData = []; 
+
+    for (let i = 0; i < partsList.length; i++) {
+        loading.innerText = `⏳ 일괄 검색 중... (${i + 1} / ${partsList.length})`;
+        const resultData = await fetchAndAnalyze(partsList[i].partName, partsList[i].qty);
+        globalExcelData.push({ partName: partsList[i].partName, qty: partsList[i].qty, data: resultData.list, top3: resultData.top3, rawOffers: resultData.rawOffers });
+        createAccordionItem(partsList[i].partName, partsList[i].qty, resultData, i);
+        if (i < partsList.length - 1) await new Promise(resolve => setTimeout(resolve, 1500));
+    }
+    loading.innerText = `✅ 모든 검색이 완료되었습니다!`;
+    setTimeout(() => { loading.style.display = 'none'; }, 3000);
+    document.getElementById('btnBatchExcel').disabled = false;
+}
+
+function downloadBatchExcel() {
+    if (globalExcelData.length === 0) return alert("저장할 데이터가 없습니다.");
+    let wb = XLSX.utils.book_new(); 
+    globalExcelData.forEach((res) => {
+        let wsData = [["Distributor", "Stock", "Min Qty", "Buy Qty", "Total ($)"]];
+        res.data.forEach(row => wsData.push([row.company, row.stock, row.moq, row.buyQty, row.totalPrice]));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(wsData), res.partName.substring(0, 31));
+    });
+    XLSX.writeFile(wb, `AtoZ_소싱리포트.xlsx`);
+}
