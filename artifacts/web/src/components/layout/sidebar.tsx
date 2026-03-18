@@ -1,6 +1,51 @@
 import { Link, useLocation } from "wouter";
 import { useAuth, useLogout } from "@/hooks/use-auth";
-import { LayoutDashboard, LogOut, UserCircle } from "lucide-react";
+import {
+  LayoutDashboard,
+  LogOut,
+  UserCircle,
+  Wrench,
+  Settings,
+  FilePlus,
+  Key,
+  ClipboardList,
+  ShieldAlert,
+} from "lucide-react";
+
+interface NavItem {
+  href: string;
+  label: string;
+  icon: React.ReactNode;
+}
+
+const commonNavItems: NavItem[] = [
+  { href: "/", label: "대시보드", icon: <LayoutDashboard className="w-4 h-4 flex-shrink-0" /> },
+  { href: "/feature1", label: "기능 1", icon: <Wrench className="w-4 h-4 flex-shrink-0" /> },
+  { href: "/feature2", label: "기능 2", icon: <Settings className="w-4 h-4 flex-shrink-0" /> },
+];
+
+const adminNavItems: NavItem[] = [
+  { href: "/admin/license-issue", label: "신규 라이선스 발급", icon: <FilePlus className="w-4 h-4 flex-shrink-0" /> },
+  { href: "/admin/license-manage", label: "라이선스 관리", icon: <Key className="w-4 h-4 flex-shrink-0" /> },
+  { href: "/admin/access-log", label: "접속 기록", icon: <ClipboardList className="w-4 h-4 flex-shrink-0" /> },
+  { href: "/admin/security", label: "보안 모니터링", icon: <ShieldAlert className="w-4 h-4 flex-shrink-0" /> },
+];
+
+function NavLink({ item, active }: { item: NavItem; active: boolean }) {
+  return (
+    <Link
+      href={item.href}
+      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+        active
+          ? "bg-blue-50 text-blue-700"
+          : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+      }`}
+    >
+      {item.icon}
+      <span>{item.label}</span>
+    </Link>
+  );
+}
 
 export function Sidebar() {
   const [location] = useLocation();
@@ -8,6 +53,7 @@ export function Sidebar() {
   const logout = useLogout();
 
   const user = auth?.user;
+  const isAdmin = user?.role === "admin";
 
   const handleLogout = () => {
     logout.mutate(undefined, {
@@ -36,21 +82,26 @@ export function Sidebar() {
 
       {/* Navigation */}
       <div className="flex-1 py-5 px-3 flex flex-col gap-1 overflow-y-auto">
+        {/* 공통 메뉴 */}
         <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest px-3 pb-2">
           메뉴
         </p>
+        {commonNavItems.map((item) => (
+          <NavLink key={item.href} item={item} active={location === item.href} />
+        ))}
 
-        <Link
-          href="/"
-          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-            location === "/"
-              ? "bg-blue-50 text-blue-700"
-              : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-          }`}
-        >
-          <LayoutDashboard className="w-4 h-4 flex-shrink-0" />
-          <span>대시보드</span>
-        </Link>
+        {/* 관리자 전용 메뉴 */}
+        {isAdmin && (
+          <>
+            <div className="my-3 border-t border-gray-100" />
+            <p className="text-[10px] font-semibold text-orange-400 uppercase tracking-widest px-3 pb-2">
+              관리자 전용
+            </p>
+            {adminNavItems.map((item) => (
+              <NavLink key={item.href} item={item} active={location === item.href} />
+            ))}
+          </>
+        )}
       </div>
 
       {/* User Footer */}
@@ -64,7 +115,7 @@ export function Sidebar() {
               {user?.displayName || "사용자"}
             </span>
             <span className="text-xs text-gray-400 truncate">
-              {user?.role === "admin" ? "관리자" : "직원"}
+              {isAdmin ? "관리자" : "직원"}
             </span>
           </div>
           <button

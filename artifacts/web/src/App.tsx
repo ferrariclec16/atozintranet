@@ -8,6 +8,12 @@ import { FullPageLoader } from "@/components/ui/loader";
 import Dashboard from "@/pages/dashboard";
 import Login from "@/pages/login";
 import NotFound from "@/pages/not-found";
+import Feature1 from "@/pages/feature1";
+import Feature2 from "@/pages/feature2";
+import LicenseIssue from "@/pages/admin/license-issue";
+import LicenseManage from "@/pages/admin/license-manage";
+import AccessLog from "@/pages/admin/access-log";
+import Security from "@/pages/admin/security";
 
 const queryClient = new QueryClient();
 
@@ -19,6 +25,25 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 
   if (!data?.user) {
     setTimeout(() => setLocation("/login"), 0);
+    return <FullPageLoader />;
+  }
+
+  return <Component />;
+}
+
+function AdminRoute({ component: Component }: { component: React.ComponentType }) {
+  const { data, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
+
+  if (isLoading) return <FullPageLoader />;
+
+  if (!data?.user) {
+    setTimeout(() => setLocation("/login"), 0);
+    return <FullPageLoader />;
+  }
+
+  if (data.user.role !== "admin") {
+    setTimeout(() => setLocation("/"), 0);
     return <FullPageLoader />;
   }
 
@@ -47,6 +72,24 @@ function Router() {
       </Route>
       <Route path="/">
         <ProtectedRoute component={Dashboard} />
+      </Route>
+      <Route path="/feature1">
+        <ProtectedRoute component={Feature1} />
+      </Route>
+      <Route path="/feature2">
+        <ProtectedRoute component={Feature2} />
+      </Route>
+      <Route path="/admin/license-issue">
+        <AdminRoute component={LicenseIssue} />
+      </Route>
+      <Route path="/admin/license-manage">
+        <AdminRoute component={LicenseManage} />
+      </Route>
+      <Route path="/admin/access-log">
+        <AdminRoute component={AccessLog} />
+      </Route>
+      <Route path="/admin/security">
+        <AdminRoute component={Security} />
       </Route>
       <Route component={NotFound} />
     </Switch>
