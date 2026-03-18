@@ -1,0 +1,1173 @@
+혹시
+
+# [1. 파이썬 표준 라이브러리]
+
+import os, sys, time, random, io, base64, hashlib, re, uuid, webbrowser, threading, winreg
+
+from urllib.parse import urlparse, parse_qs
+
+from datetime import datetime
+
+import ctypes
+
+
+
+# [2. 서드파티 라이브러리]
+
+import requests
+
+import pyperclip
+
+from PIL import Image
+
+from flask import Flask, request, jsonify, render_template_string
+
+import tkinter as tk
+
+from tkinter import messagebox
+
+
+
+# [3. Windows API 모듈]
+
+import win32gui, win32api, win32con, win32clipboard, win32process
+
+
+
+# ---------------------------------------------------------
+
+# [보안 설정] 웹 연동 프로토콜 및 비밀 키
+
+# ---------------------------------------------------------
+
+PROTOCOL_NAME = "moapro"
+
+SECRET_KEY = "k23kadf9Odf6M"
+
+
+
+# ---------------------------------------------------------
+
+# [코어 모듈] 매크로 엔진 및 Flask 서버
+
+# ---------------------------------------------------------
+
+app = Flask(__name__)
+
+
+
+# 💡 예약 작업 저장소 (백그라운드에서 관리됨)
+
+scheduled_tasks = {}
+
+
+
+def send_image_to_clipboard(base64_str):
+
+    try:
+
+        encoded = base64_str.split(",", 1)[1] if "," in base64_str else base64_str
+
+        img = Image.open(io.BytesIO(base64.b64decode(encoded)))
+
+        out = io.BytesIO()
+
+        img.convert("RGB").save(out, "BMP")
+
+        data = out.getvalue()[14:]
+
+        win32clipboard.OpenClipboard()
+
+        win32clipboard.EmptyClipboard()
+
+        win32clipboard.SetClipboardData(win32clipboard.CF_DIB, data)
+
+        win32clipboard.CloseClipboard()
+
+        return True
+
+    except: return False
+
+
+
+def random_sleep(): time.sleep(random.uniform(0.1, 0.3))
+
+
+
+def send_to_windows_app(room_name, text, image_b64):
+
+    hwnd = 0
+
+    def cb(h, ctx):
+
+        nonlocal hwnd
+
+        if win32gui.IsWindowVisible(h):
+
+            cn = win32gui.GetClassName(h)
+
+            if ("EVA_Window_Dblclk" in cn or "TfmChat" in cn) and room_name in win32gui.GetWindowText(h): hwnd = h
+
+    win32gui.EnumWindows(cb, None)
+
+    if not hwnd: return {"status": "error", "message": "창 없음"}
+
+
+
+    try:
+
+        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+
+        time.sleep(0.1)
+
+        win32api.keybd_event(win32con.VK_MENU, 0, 0, 0)
+
+        win32api.keybd_event(win32con.VK_MENU, 0, win32con.KEYEVENTF_KEYUP, 0)
+
+        win32gui.SetForegroundWindow(hwnd)
+
+       
+
+        timeout = 15
+
+        while win32gui.GetForegroundWindow() != hwnd and timeout > 0:
+
+            time.sleep(0.1)
+
+            try: win32gui.SetForegroundWindow(hwnd)
+
+            except: pass
+
+            timeout -= 1
+
+
+
+        edit_hwnd = 0
+
+        def find_edit_hwnd(child_hwnd, ctx):
+
+            nonlocal edit_hwnd
+
+            if win32gui.GetClassName(child_hwnd) == "RICHEDIT50W":
+
+                edit_hwnd = child_hwnd
+
+        win32gui.EnumChildWindows(hwnd, find_edit_hwnd, None)
+
+
+
+        if edit_hwnd:
+
+            rect = win32gui.GetWindowRect(edit_hwnd)
+
+            cx = rect[0] + (rect[2] - rect[0]) // 2
+
+            cy = rect[1] + (rect[3] - rect[1]) // 2
+
+            win32api.SetCursorPos((cx, cy))
+
+        else:
+
+            r = win32gui.GetWindowRect(hwnd)
+
+            win32api.SetCursorPos((r[0] + 50, r[3] - 40))
+
+           
+
+        time.sleep(0.1)
+
+        win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+
+        time.sleep(0.05)
+
+        win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+
+        time.sleep(0.1)
+
+
+
+        if image_b64 and send_image_to_clipboard(image_b64):
+
+            random_sleep()
+
+            win32api.keybd_event(win32con.VK_CONTROL, 0, 0, 0)
+
+            win32api.keybd_event(ord('V'), 0, 0, 0)
+
+            time.sleep(0.05)
+
+            win32api.keybd_event(ord('V'), 0, win32con.KEYEVENTF_KEYUP, 0)
+
+            win32api.keybd_event(win32con.VK_CONTROL, 0, win32con.KEYEVENTF_KEYUP, 0)
+
+            random_sleep()
+
+            win32api.keybd_event(win32con.VK_RETURN, 0, 0, 0)
+
+            time.sleep(0.05)
+
+            win32api.keybd_event(win32con.VK_RETURN, 0, win32con.KEYEVENTF_KEYUP, 0)
+
+            random_sleep()
+
+
+
+        if text and text.strip():
+
+            pyperclip.copy(text)
+
+            random_sleep()
+
+            win32api.keybd_event(win32con.VK_CONTROL, 0, 0, 0)
+
+            win32api.keybd_event(ord('V'), 0, 0, 0)
+
+            time.sleep(0.05)
+
+            win32api.keybd_event(ord('V'), 0, win32con.KEYEVENTF_KEYUP, 0)
+
+            win32api.keybd_event(win32con.VK_CONTROL, 0, win32con.KEYEVENTF_KEYUP, 0)
+
+            random_sleep()
+
+            win32api.keybd_event(win32con.VK_RETURN, 0, 0, 0)
+
+            time.sleep(0.05)
+
+            win32api.keybd_event(win32con.VK_RETURN, 0, win32con.KEYEVENTF_KEYUP, 0)
+
+            random_sleep()
+
+           
+
+        return {"status": "success"}
+
+    except Exception as e: return {"status": "error", "message": str(e)}
+
+
+
+# ---------------------------------------------------------
+
+# [스케줄러 봇] 시간에 맞춰 예약된 메시지를 발송하는 백그라운드 엔진
+
+# ---------------------------------------------------------
+
+def background_scheduler():
+
+    while True:
+
+        current_time = time.time()
+
+        tasks_to_execute = []
+
+       
+
+        # 실행 시간이 된 작업들을 찾습니다.
+
+        for task_id, task in list(scheduled_tasks.items()):
+
+            if task['target_time'] <= current_time:
+
+                tasks_to_execute.append(task)
+
+                del scheduled_tasks[task_id] # 대기열에서 삭제
+
+               
+
+        # 찾은 작업들을 순서대로 발송합니다.
+
+        for task in tasks_to_execute:
+
+            for room in task['rooms']:
+
+                send_to_windows_app(room, task['message'], task['image'])
+
+                time.sleep(random.uniform(0.2, 0.4))
+
+               
+
+        time.sleep(1) # 1초마다 시계를 확인합니다.
+
+
+
+# ---------------------------------------------------------
+
+# [API 엔드포인트]
+
+# ---------------------------------------------------------
+
+@app.route('/api/windows', methods=['GET'])
+
+def get_windows():
+
+    windows = []
+
+    def handler(h, ctx):
+
+        if win32gui.IsWindowVisible(h):
+
+            cn, t = win32gui.GetClassName(h), win32gui.GetWindowText(h)
+
+            if t.strip() and t != "카카오톡":
+
+                app_type = ""
+
+                if "TfmChat" in cn: app_type = "MoeME"
+
+                elif "EVA_Window_Dblclk" in cn:
+
+                    app_type = "Kakao"
+
+                if app_type:
+
+                    clean_t = re.sub(r'\[#\].*?\[#\]\s*', '', t).strip()
+
+                    windows.append({"name": clean_t, "type": app_type})
+
+    win32gui.EnumWindows(handler, None)
+
+    return jsonify(list({v['name']:v for v in windows}.values()))
+
+
+
+@app.route('/api/send', methods=['POST'])
+
+def send_message():
+
+    data = request.json
+
+    results = []
+
+    for room in data.get('rooms', []):
+
+        results.append({"room": room, "result": send_to_windows_app(room, data.get('message', ''), data.get('image', None))})
+
+        time.sleep(random.uniform(0.2, 0.4))
+
+    return jsonify({"status": "success", "details": results})
+
+
+
+@app.route('/api/schedule', methods=['POST'])
+
+def add_schedule():
+
+    data = request.json
+
+    task_id = str(uuid.uuid4())
+
+    scheduled_tasks[task_id] = {
+
+        'id': task_id,
+
+        'channel_name': data.get('channel_name', '예약'),
+
+        'rooms': data.get('rooms', []),
+
+        'message': data.get('message', ''),
+
+        'image': data.get('image', None),
+
+        'target_time': data.get('target_time'), # Unix Timestamp
+
+        'display_time': datetime.fromtimestamp(data.get('target_time')).strftime('%Y-%m-%d %H:%M')
+
+    }
+
+    return jsonify({"status": "success"})
+
+
+
+@app.route('/api/schedule', methods=['GET'])
+
+def get_schedules():
+
+    # 시간에 따라 정렬하여 반환
+
+    sorted_tasks = sorted(scheduled_tasks.values(), key=lambda x: x['target_time'])
+
+    # 보안상 이미지는 제외하고 반환
+
+    safe_tasks = []
+
+    for t in sorted_tasks:
+
+        safe_tasks.append({
+
+            'id': t['id'],
+
+            'channel_name': t['channel_name'],
+
+            'rooms_preview': f"{t['rooms'][0]} 외 {len(t['rooms'])-1}곳" if len(t['rooms']) > 1 else t['rooms'][0],
+
+            'message_preview': (t['message'][:15] + '...') if len(t['message']) > 15 else (t['message'] or '[이미지 전송]'),
+
+            'display_time': t['display_time']
+
+        })
+
+    return jsonify(safe_tasks)
+
+
+
+@app.route('/api/schedule/<task_id>', methods=['DELETE'])
+
+def delete_schedule(task_id):
+
+    if task_id in scheduled_tasks:
+
+        del scheduled_tasks[task_id]
+
+        return jsonify({"status": "success"})
+
+    return jsonify({"status": "error", "message": "Not found"}), 404
+
+
+
+
+
+# --- [웹 프론트엔드 HTML] ---
+
+HTML_TEMPLATE = """
+
+<!DOCTYPE html>
+
+<html lang="ko">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <title>MOA 자동 발송기</title>
+
+    <style>
+
+        :root { --kakao-yellow: #FEE500; --kakao-brown: #3C1E1E; --bg-dark: #1e1e26; --card-bg: #2b2b36; --text-light: #e0e0e0; --accent: #4a90e2; --reset-red: #ff5252; --schedule-green: #2ecc71; }
+
+        body { font-family: 'Pretendard', sans-serif; background-color: var(--bg-dark); color: var(--text-light); margin: 0; padding: 25px; display: flex; height: 100vh; box-sizing: border-box; gap: 20px; }
+
+       
+
+        .side-panel { width: 380px; background: var(--card-bg); border-radius: 20px; padding: 20px; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+
+        .control-box { background: #3e3e4d; border-radius: 12px; padding: 12px; margin-bottom: 15px; display: flex; flex-direction: column; gap: 10px; }
+
+       
+
+        .grid-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+        .grid-btns-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px; }
+
+       
+
+        .grid-btns button, .grid-btns-4 button { padding: 8px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 12px; color: white; }
+
+        .btn-move-ch1 { background: var(--accent); } .btn-move-ch2 { background: #6c5ce7; }
+
+        .btn-move-ch3 { background: #e17055; } .btn-move-ch4 { background: #00b894; }
+
+       
+
+        .btn-refresh { background: #444; border: 1px solid #666; }
+
+        .btn-reset-all { background: var(--reset-red); }
+
+       
+
+        .search-input { background: #22222c; border: 1px solid #4e4e5e; border-radius: 8px; padding: 12px; color: white; outline: none; width: 100%; box-sizing: border-box; font-size: 14px; margin-top: 10px; }
+
+        .window-list { flex-grow: 1; overflow-y: auto; margin-top: 10px; }
+
+        .win-item { display: flex; align-items: center; gap: 12px; background: #383848; padding: 12px; border-radius: 10px; margin-bottom: 8px; cursor: grab; transition: 0.2s; }
+
+        .win-item:hover { background: #454558; }
+
+        .win-item input[type="checkbox"] { transform: scale(1.3); cursor: pointer; }
+
+        .win-name { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; user-select: none; }
+
+       
+
+        /* 메인 컨텐츠 영역 (그리드 레이아웃) */
+
+        .right-area { flex-grow: 1; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; padding-right: 10px; }
+
+        .main-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+       
+
+        .channel-card { background: var(--card-bg); border-radius: 20px; padding: 20px; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+
+        .drop-area { min-height: 80px; background: #22222c; border: 2px dashed #4e4e5e; border-radius: 15px; margin: 10px 0; padding: 10px; display: flex; flex-wrap: wrap; gap: 8px; max-height: 120px; overflow-y: auto; }
+
+        .badge { background: var(--kakao-yellow); color: var(--kakao-brown); padding: 5px 12px; border-radius: 15px; font-weight: bold; font-size: 11px; display: flex; align-items: center; gap: 6px; }
+
+        .badge span { cursor: pointer; color: #ff5252; font-weight: bold; }
+
+       
+
+        .input-container { display: flex; flex-direction: column; flex-grow: 1; gap: 10px; background: #22222c; border: 1px solid #3e3e4d; border-radius: 12px; padding: 15px; }
+
+        .img-preview-box img { max-height: 100px; border-radius: 4px; display: block; }
+
+        .remove-img { position: absolute; top: -10px; right: -10px; background: var(--reset-red); color: white; border-radius: 50%; width: 22px; height: 22px; text-align: center; line-height: 20px; cursor: pointer; font-weight: bold; font-size: 14px; }
+
+        textarea { flex-grow: 1; background: transparent; border: none; color: white; resize: none; font-family: inherit; outline: none; padding: 0; min-height: 60px; font-size: 14px; }
+
+       
+
+        .send-btn { background: var(--kakao-yellow); color: var(--kakao-brown); border: none; border-radius: 10px; padding: 12px; margin-top: 10px; font-weight: bold; cursor: pointer; font-size: 15px; transition: 0.2s; }
+
+        .schedule-btn { background: var(--schedule-green); color: white; border: none; border-radius: 10px; padding: 12px; margin-top: 10px; font-weight: bold; cursor: pointer; font-size: 15px; transition: 0.2s; }
+
+       
+
+        .time-picker { background: #3e3e4d; color: white; border: none; padding: 10px; border-radius: 8px; font-family: inherit; font-size: 14px; width: 100%; box-sizing: border-box; margin-bottom: 5px; cursor: pointer; outline: none; }
+
+        ::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
+
+       
+
+        /* 예약 현황판 UI */
+
+        .board-card { background: var(--card-bg); border-radius: 20px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); display: flex; flex-direction: column; }
+
+        .board-list { margin-top: 15px; display: flex; flex-direction: column; gap: 8px; }
+
+        .board-item { display: flex; align-items: center; justify-content: space-between; background: #383848; padding: 12px 15px; border-radius: 10px; font-size: 14px; }
+
+        .board-info { display: flex; gap: 15px; align-items: center; }
+
+        .b-time { color: var(--schedule-green); font-weight: bold; font-size: 13px; }
+
+        .b-ch { background: #555; padding: 3px 8px; border-radius: 5px; font-size: 11px; }
+
+        .b-room { color: var(--kakao-yellow); font-weight: bold; }
+
+        .b-msg { color: #aaa; font-style: italic; }
+
+        .btn-cancel { background: var(--reset-red); color: white; border: none; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-weight: bold; font-size: 12px; }
+
+
+
+        .filter-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+
+        .app-filter-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px; color: #e0e0e0; }
+
+        .app-filter-grid input { transform: scale(1.2); }
+
+    </style>
+
+</head>
+
+<body>
+
+    <div class="side-panel">
+
+        <h2 style="color:var(--kakao-yellow); margin-bottom:15px; margin-top:0;">📱 MOA 발송기</h2>
+
+       
+
+        <div class="control-box">
+
+            <div class="app-filter-grid">
+
+                <label><input type="checkbox" class="app-filter" value="Kakao" checked onchange="renderWindowList()"> 카카오톡</label>
+
+                <label><input type="checkbox" class="app-filter" value="MoeME" checked onchange="renderWindowList()"> MoeME</label>
+
+            </div>
+
+        </div>
+
+
+
+        <div class="control-box">
+
+            <span style="font-size: 12px; font-weight: bold; color: #aaa; margin-bottom: 5px;">채널로 타겟 이동</span>
+
+            <div class="grid-btns-4">
+
+                <button class="btn-move-ch1" onclick="moveBatch('drop1')">CH 01</button>
+
+                <button class="btn-move-ch2" onclick="moveBatch('drop2')">CH 02</button>
+
+                <button class="btn-move-ch3" onclick="moveBatch('drop3')">예약 01</button>
+
+                <button class="btn-move-ch4" onclick="moveBatch('drop4')">예약 02</button>
+
+            </div>
+
+            <div class="grid-btns" style="margin-top: 10px;">
+
+                <button class="btn-refresh" onclick="fetchWindows()">🔄 창 목록 새로고침</button>
+
+                <button class="btn-reset-all" onclick="resetAll()">🧹 전체 채널 비우기</button>
+
+            </div>
+
+        </div>
+
+
+
+        <input type="text" class="search-input" id="search" placeholder="검색..." onkeyup="filter()">
+
+        <div class="window-list" id="winList"></div>
+
+    </div>
+
+
+
+    <div class="right-area">
+
+        <div class="main-grid">
+
+            <div class="channel-card">
+
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+
+                    <h3 style="margin:0; font-size:16px; color:#aaa;">CHANNEL 01</h3>
+
+                    <span style="font-size:12px; cursor:pointer; color:#888;" onclick="resetSingle('drop1')">비우기 &times;</span>
+
+                </div>
+
+                <div class="drop-area" id="drop1" ondragover="event.preventDefault();" ondrop="handleDrop(event, 'drop1')"></div>
+
+                <div class="input-container">
+
+                    <div id="previewWrap1" style="display:none;"><div class="img-preview-box" style="position:relative; display:inline-block;"><img id="imgSrc1" src=""><span class="remove-img" onclick="removeImage('ch1', 'previewWrap1')">&times;</span></div></div>
+
+                    <textarea id="msg1" placeholder="즉시 발송할 메시지 입력..." onpaste="handlePaste(event, 'ch1', 'previewWrap1', 'imgSrc1')"></textarea>
+
+                </div>
+
+                <button class="send-btn" id="btn1" onclick="send('drop1', 'msg1', 'btn1', 'ch1', 'previewWrap1')">즉시 전송 시작</button>
+
+            </div>
+
+
+
+            <div class="channel-card">
+
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+
+                    <h3 style="margin:0; font-size:16px; color:#aaa;">CHANNEL 02</h3>
+
+                    <span style="font-size:12px; cursor:pointer; color:#888;" onclick="resetSingle('drop2')">비우기 &times;</span>
+
+                </div>
+
+                <div class="drop-area" id="drop2" ondragover="event.preventDefault();" ondrop="handleDrop(event, 'drop2')"></div>
+
+                <div class="input-container">
+
+                    <div id="previewWrap2" style="display:none;"><div class="img-preview-box" style="position:relative; display:inline-block;"><img id="imgSrc2" src=""><span class="remove-img" onclick="removeImage('ch2', 'previewWrap2')">&times;</span></div></div>
+
+                    <textarea id="msg2" placeholder="즉시 발송할 메시지 입력..." onpaste="handlePaste(event, 'ch2', 'previewWrap2', 'imgSrc2')"></textarea>
+
+                </div>
+
+                <button class="send-btn" id="btn2" onclick="send('drop2', 'msg2', 'btn2', 'ch2', 'previewWrap2')">즉시 전송 시작</button>
+
+            </div>
+
+
+
+            <div class="channel-card" style="border: 1px solid #e17055;">
+
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+
+                    <h3 style="margin:0; font-size:16px; color:#e17055;">⏰ 예약 CH 01</h3>
+
+                    <span style="font-size:12px; cursor:pointer; color:#888;" onclick="resetSingle('drop3')">비우기 &times;</span>
+
+                </div>
+
+                <div class="drop-area" id="drop3" ondragover="event.preventDefault();" ondrop="handleDrop(event, 'drop3')"></div>
+
+                <input type="datetime-local" id="time3" class="time-picker">
+
+                <div class="input-container">
+
+                    <div id="previewWrap3" style="display:none;"><div class="img-preview-box" style="position:relative; display:inline-block;"><img id="imgSrc3" src=""><span class="remove-img" onclick="removeImage('ch3', 'previewWrap3')">&times;</span></div></div>
+
+                    <textarea id="msg3" placeholder="예약할 메시지 입력..." onpaste="handlePaste(event, 'ch3', 'previewWrap3', 'imgSrc3')"></textarea>
+
+                </div>
+
+                <button class="schedule-btn" id="btn3" onclick="scheduleSend('drop3', 'msg3', 'time3', 'btn3', 'ch3', 'previewWrap3', '예약 CH 01')">서버에 예약 등록</button>
+
+            </div>
+
+
+
+            <div class="channel-card" style="border: 1px solid #00b894;">
+
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+
+                    <h3 style="margin:0; font-size:16px; color:#00b894;">⏰ 예약 CH 02</h3>
+
+                    <span style="font-size:12px; cursor:pointer; color:#888;" onclick="resetSingle('drop4')">비우기 &times;</span>
+
+                </div>
+
+                <div class="drop-area" id="drop4" ondragover="event.preventDefault();" ondrop="handleDrop(event, 'drop4')"></div>
+
+                <input type="datetime-local" id="time4" class="time-picker">
+
+                <div class="input-container">
+
+                    <div id="previewWrap4" style="display:none;"><div class="img-preview-box" style="position:relative; display:inline-block;"><img id="imgSrc4" src=""><span class="remove-img" onclick="removeImage('ch4', 'previewWrap4')">&times;</span></div></div>
+
+                    <textarea id="msg4" placeholder="예약할 메시지 입력..." onpaste="handlePaste(event, 'ch4', 'previewWrap4', 'imgSrc4')"></textarea>
+
+                </div>
+
+                <button class="schedule-btn" id="btn4" onclick="scheduleSend('drop4', 'msg4', 'time4', 'btn4', 'ch4', 'previewWrap4', '예약 CH 02')">서버에 예약 등록</button>
+
+            </div>
+
+        </div>
+
+
+
+        <div class="board-card">
+
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px solid #444; padding-bottom: 10px;">
+
+                <h3 style="margin:0; font-size:16px; color:white;">📋 백그라운드 예약 대기 현황</h3>
+
+                <span style="font-size:12px; color:#aaa;">(인터넷 창을 꺼도 예약 시간에 자동 발송됩니다)</span>
+
+            </div>
+
+            <div class="board-list" id="scheduleBoard">
+
+                <div style="text-align:center; padding: 20px; color:#666; font-size: 14px;">대기 중인 예약이 없습니다.</div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+
+    <script>
+
+        let channelImages = { 'ch1': null, 'ch2': null, 'ch3': null, 'ch4': null }, allFetchedWindows = [];
+
+
+
+        async function fetchWindows() { try { const res = await fetch('/api/windows'); allFetchedWindows = await res.json(); renderWindowList(); } catch(e){} }
+
+       
+
+        // 현황판 데이터 가져오기
+
+        async function fetchSchedules() {
+
+            try {
+
+                const res = await fetch('/api/schedule');
+
+                const schedules = await res.json();
+
+                const board = document.getElementById('scheduleBoard');
+
+               
+
+                if(schedules.length === 0) {
+
+                    board.innerHTML = '<div style="text-align:center; padding: 20px; color:#666; font-size: 14px;">대기 중인 예약이 없습니다.</div>';
+
+                    return;
+
+                }
+
+               
+
+                let html = '';
+
+                schedules.forEach(s => {
+
+                    html += `
+
+                    <div class="board-item">
+
+                        <div class="board-info">
+
+                            <span class="b-time">[${s.display_time}]</span>
+
+                            <span class="b-ch">${s.channel_name}</span>
+
+                            <span class="b-room">${s.rooms_preview}</span>
+
+                            <span class="b-msg">${s.message_preview}</span>
+
+                        </div>
+
+                        <button class="btn-cancel" onclick="cancelSchedule('${s.id}')">예약 취소</button>
+
+                    </div>`;
+
+                });
+
+                board.innerHTML = html;
+
+            } catch(e) {}
+
+        }
+
+
+
+        async function cancelSchedule(id) {
+
+            if(!confirm("해당 예약을 취소하시겠습니까?")) return;
+
+            await fetch(`/api/schedule/${id}`, { method: 'DELETE' });
+
+            fetchSchedules();
+
+        }
+
+
+
+        // 주기적으로 현황판 새로고침 (3초마다)
+
+        setInterval(fetchSchedules, 3000);
+
+
+
+        function renderWindowList() {
+
+            const filters = Array.from(document.querySelectorAll('.app-filter:checked')).map(cb => cb.value);
+
+            const listEl = document.getElementById('winList'), q = document.getElementById('search').value.toLowerCase();
+
+            const labels = { "Kakao": "💬 카카오톡", "MoeME": "🚀 MoeME" };
+
+            let html = "";
+
+            for (let [type, label] of Object.entries(labels)) {
+
+                if (!filters.includes(type)) continue;
+
+                const items = allFetchedWindows.filter(win => win.type === type && win.name.toLowerCase().includes(q));
+
+                if (items.length > 0) {
+
+                    html += `<div style="padding: 12px 5px 6px; color: var(--kakao-yellow); font-weight: bold; font-size: 13px; border-bottom: 1px solid #444; margin-top: 5px; display: flex; justify-content: space-between; align-items: center;">
+
+                        <span>${label}</span><input type="checkbox" onchange="toggleGroupCheck('${type}', this.checked)" style="cursor:pointer; transform: scale(1.1);"></div>`;
+
+                    items.forEach(win => {
+
+                        html += `<div class="win-item" draggable="true" ondragstart="handleDragStart(event, '${win.name}')" onclick="this.querySelector('.win-cb').click()">
+
+                            <input type="checkbox" class="win-cb" data-app="${type}" value="${win.name}" onclick="event.stopPropagation()"><div class="win-name">${win.name}</div></div>`;
+
+                    });
+
+                }
+
+            }
+
+            listEl.innerHTML = html || '<div style="text-align:center; color:#666; padding:20px; font-size:13px;">일치하는 창이 없습니다.</div>';
+
+        }
+
+
+
+        function toggleGroupCheck(type, checked) { document.querySelectorAll(`.win-cb[data-app="${type}"]`).forEach(cb => { cb.checked = checked; }); }
+
+        function filter() { renderWindowList(); }
+
+        function handleDragStart(e, name) { const checked = Array.from(document.querySelectorAll('.win-cb:checked')).map(cb => cb.value); e.dataTransfer.setData("text/plain", JSON.stringify(checked.includes(name) ? checked : [name])); }
+
+        function handleDrop(e, tid) { e.preventDefault(); try { const names = JSON.parse(e.dataTransfer.getData("text/plain")); names.forEach(n => addBadge(tid, n)); document.querySelectorAll('.win-cb').forEach(c => c.checked = false); } catch(e){} }
+
+       
+
+        function addBadge(tid, name) {
+
+            const zone = document.getElementById(tid);
+
+            if(!Array.from(zone.querySelectorAll('.badge')).some(b => b.dataset.val === name)) {
+
+                const b = document.createElement('div'); b.className = 'badge'; b.dataset.val = name;
+
+                b.innerHTML = `${name} <span onclick="this.parentElement.remove()">&times;</span>`; zone.appendChild(b);
+
+            }
+
+        }
+
+       
+
+        function moveBatch(tid) { const sel = Array.from(document.querySelectorAll('.win-cb:checked')).map(c => c.value); if(!sel.length) return alert("체크항목 없음!"); sel.forEach(n => addBadge(tid, n)); document.querySelectorAll('.win-cb').forEach(c => c.checked = false); }
+
+        function resetSingle(tid) { document.getElementById(tid).innerHTML = ""; }
+
+        function resetAll() { ['drop1','drop2','drop3','drop4'].forEach(id => document.getElementById(id).innerHTML = ""); }
+
+       
+
+        function handlePaste(e, chId, wrapId, imgId) {
+
+            for (let item of (e.clipboardData || e.originalEvent.clipboardData).items) {
+
+                if (item.kind === 'file' && item.type.startsWith('image/')) {
+
+                    const reader = new FileReader(); reader.onload = (ev) => { channelImages[chId] = ev.target.result; document.getElementById(wrapId).style.display = 'block'; document.getElementById(imgId).src = ev.target.result; };
+
+                    reader.readAsDataURL(item.getAsFile());
+
+                }
+
+            }
+
+        }
+
+        function removeImage(chId, wrapId) { channelImages[chId] = null; document.getElementById(wrapId).style.display = 'none'; }
+
+       
+
+        // 즉시 전송
+
+        async function send(zid, mid, bid, chId, wrapId) {
+
+            const rooms = Array.from(document.getElementById(zid).querySelectorAll('.badge')).map(b => b.dataset.val), msg = document.getElementById(mid).value;
+
+            if(!rooms.length || (!msg.trim() && !channelImages[chId])) return alert("방과 메시지를 확인하세요!");
+
+            const btn = document.getElementById(bid); btn.disabled = true; btn.innerText = "🚀 전송 중...";
+
+            try { await fetch('/api/send', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ rooms: rooms, message: msg, image: channelImages[chId] }) }); btn.innerText = "전송 완료!"; }
+
+            catch (err) { alert("오류!"); btn.innerText = "실패"; }
+
+            finally { setTimeout(() => { btn.disabled = false; btn.innerText = "즉시 전송 시작"; }, 600); document.getElementById(mid).value = ""; if (channelImages[chId]) removeImage(chId, wrapId); }
+
+        }
+
+
+
+        // 예약 전송
+
+        async function scheduleSend(zid, mid, tid, bid, chId, wrapId, chName) {
+
+            const rooms = Array.from(document.getElementById(zid).querySelectorAll('.badge')).map(b => b.dataset.val);
+
+            const msg = document.getElementById(mid).value;
+
+            const timeVal = document.getElementById(tid).value;
+
+           
+
+            if(!rooms.length || (!msg.trim() && !channelImages[chId])) return alert("방과 메시지를 확인하세요!");
+
+            if(!timeVal) return alert("예약할 날짜와 시간을 선택해주세요!");
+
+           
+
+            const targetTimeEpoch = new Date(timeVal).getTime() / 1000;
+
+            if(targetTimeEpoch <= Date.now() / 1000) return alert("예약 시간은 현재 시간 이후여야 합니다.");
+
+
+
+            const btn = document.getElementById(bid); btn.disabled = true; btn.innerText = "⌛ 예약 등록 중...";
+
+            try {
+
+                await fetch('/api/schedule', {
+
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+
+                    body: JSON.stringify({ channel_name: chName, target_time: targetTimeEpoch, rooms: rooms, message: msg, image: channelImages[chId] })
+
+                });
+
+                btn.innerText = "✅ 예약 완료!";
+
+                fetchSchedules(); // 현황판 즉시 갱신
+
+            }
+
+            catch (err) { alert("오류 발생!"); btn.innerText = "실패"; }
+
+            finally {
+
+                setTimeout(() => { btn.disabled = false; btn.innerText = "서버에 예약 등록"; }, 1000);
+
+                document.getElementById(mid).value = "";
+
+                document.getElementById(tid).value = "";
+
+                if (channelImages[chId]) removeImage(chId, wrapId);
+
+            }
+
+        }
+
+
+
+        window.onload = () => { fetchWindows(); fetchSchedules(); };
+
+    </script>
+
+</body>
+
+</html>
+
+"""
+
+
+
+@app.route('/')
+
+def index(): return render_template_string(HTML_TEMPLATE)
+
+
+
+def open_browser():
+
+    time.sleep(1.5)
+
+    webbrowser.open("http://localhost:8000")
+
+
+
+# ---------------------------------------------------------
+
+# [초기 설정] 레지스트리 등록, 관리자 권한 확인 및 보안 인증
+
+# ---------------------------------------------------------
+
+def is_admin():
+
+    try: return ctypes.windll.shell32.IsUserAnAdmin()
+
+    except: return False
+
+
+
+def register_uri_scheme():
+
+    try:
+
+        exe_path = sys.executable if getattr(sys, 'frozen', False) else os.path.abspath(sys.argv[0])
+
+        if not getattr(sys, 'frozen', False): exe_path = f'"{sys.executable}" "{exe_path}"'
+
+        else: exe_path = f'"{exe_path}"'
+
+
+
+        key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, f"Software\\Classes\\{PROTOCOL_NAME}")
+
+        winreg.SetValue(key, "", winreg.REG_SZ, f"URL:{PROTOCOL_NAME} Protocol")
+
+        winreg.SetValueEx(key, "URL Protocol", 0, winreg.REG_SZ, "")
+
+        cmd_key = winreg.CreateKey(key, r"shell\open\command")
+
+        winreg.SetValue(cmd_key, "", winreg.REG_SZ, f'{exe_path} "%1"')
+
+        winreg.CloseKey(cmd_key)
+
+        winreg.CloseKey(key)
+
+    except: pass
+
+
+
+def verify_execution():
+
+    for arg in sys.argv[1:]:
+
+        if arg.startswith(f"{PROTOCOL_NAME}://"):
+
+            try:
+
+                parsed = urlparse(arg)
+
+                query_params = parse_qs(parsed.query)
+
+                if query_params.get('key', [''])[0] == SECRET_KEY: return True
+
+            except: pass
+
+    return False
+
+
+
+if __name__ == '__main__':
+
+    if not is_admin():
+
+        if getattr(sys, 'frozen', False):
+
+            executable = sys.executable
+
+            params = ' '.join([f'"{arg}"' for arg in sys.argv[1:]])
+
+        else:
+
+            executable = sys.executable
+
+            script = os.path.abspath(sys.argv[0])
+
+            params = f'"{script}" ' + ' '.join([f'"{arg}"' for arg in sys.argv[1:]])
+
+           
+
+        ctypes.windll.shell32.ShellExecuteW(None, "runas", executable, params, None, 1)
+
+        sys.exit()
+
+
+
+    register_uri_scheme()
+
+
+
+    if not verify_execution():
+
+        root = tk.Tk()
+
+        root.withdraw()
+
+        messagebox.showwarning("보안 경고", "단독 실행이 차단되었습니다.\n\n정상적인 사용을 위해 반드시 CRM 웹사이트를 통해 실행해 주세요.")
+
+        sys.exit()
+
+
+
+    # 💡 브라우저 실행 스레드 시작
+
+    threading.Thread(target=open_browser, daemon=True).start()
+
+   
+
+    # 💡 백그라운드 예약 발송 봇(스케줄러) 스레드 시작
+
+    threading.Thread(target=background_scheduler, daemon=True).start()
+
+   
+
+    # 💡 서버 시작
+
+    app.run(host='0.0.0.0', port=8000)
+
+
+
+이 코드의 프로그램을 실행하려면 회사 페이지에 있는 moapro 실행 탭을 눌러야 실행이 되거든
+
+근데 그 회사 페이지는 회사에서밖에 쓸 수 없어 그렇게 우리도 회사 페이지에서 예를들어 AtoZ 부품 검색기를 누르면 실행되고 만약 회사 페이지에서 누르지 않고 .exe만 실행시키려고 하면 튕겨내는 걸 만들 수 있을까?
+
+{ icon: Play, label: "MOA 자동 발송기", path: "moapro://run?key=k23kadf9Odf6M", isExternal: true },
+
+이게 그 버튼이야 우리는 이걸이용할 수 있어ㅓㅓ?
