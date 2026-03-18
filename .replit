@@ -24,3 +24,8 @@ expertMode = true
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
+
+[userenv]
+
+[userenv.shared]
+GITHUB_PAT = "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"
