@@ -41,27 +41,24 @@ export default function Login() {
   return (
     <div className="min-h-screen w-full flex flex-col items-center justify-center bg-[#f5f6f8]">
       {/* Logo area */}
-      <div className="flex flex-col items-center mb-6">
+      <div className="flex flex-col items-center mb-8">
         {/* 로고 이미지 자리 - 나중에 교체 */}
-        <div className="flex items-center gap-2 mb-3">
-          <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center">
-            <span className="text-white font-black text-sm">AZ</span>
+        <div className="flex items-center gap-4 mb-4">
+          <div className="w-16 h-16 rounded-2xl bg-blue-600 flex items-center justify-center shadow-lg">
+            <span className="text-white font-black text-xl">AZ</span>
           </div>
           <div>
-            <div className="text-xl font-black tracking-tight text-gray-900 leading-tight">
+            <div className="text-3xl font-black tracking-tight text-gray-900 leading-tight">
               AtoZ ELECTRON
             </div>
-            <div className="text-[10px] tracking-widest text-gray-400 uppercase font-medium">
+            <div className="text-xs tracking-widest text-gray-400 uppercase font-medium mt-0.5">
               에이투지 일렉트론
             </div>
           </div>
         </div>
 
-        <h1 className="text-2xl font-bold text-gray-800 mt-2">
-          임직원 대시보드
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          아이디와 비밀번호를 입력하여 로그인하세요
+        <p className="text-sm text-gray-500">
+          사번과 비밀번호를 입력하여 로그인하세요
         </p>
       </div>
 
@@ -78,12 +75,12 @@ export default function Login() {
           {/* Username */}
           <div className="space-y-1.5">
             <label className="block text-sm font-semibold text-gray-700">
-              아이디
+              사번
             </label>
             <input
               {...register("username")}
               type="text"
-              placeholder="아이디를 입력하세요"
+              placeholder="사번을 입력하세요"
               autoComplete="username"
               className={`w-full px-4 py-3 rounded-xl border text-sm text-gray-800 placeholder:text-gray-400 outline-none transition-all
                 ${errors.username
