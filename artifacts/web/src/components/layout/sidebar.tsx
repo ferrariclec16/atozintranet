@@ -5,7 +5,7 @@ import {
   LogOut,
   UserCircle,
   Search,
-  Settings,
+  FileText,
   FilePlus,
   Key,
   ClipboardList,
@@ -21,7 +21,7 @@ interface NavItem {
 const commonNavItems: NavItem[] = [
   { href: "/", label: "대시보드", icon: <LayoutDashboard className="w-4 h-4 flex-shrink-0" /> },
   { href: "/feature1", label: "부품 검색기", icon: <Search className="w-4 h-4 flex-shrink-0" /> },
-  { href: "/feature2", label: "기능 2", icon: <Settings className="w-4 h-4 flex-shrink-0" /> },
+  { href: "/feature2", label: "발주서 정리", icon: <FileText className="w-4 h-4 flex-shrink-0" /> },
 ];
 
 const adminNavItems: NavItem[] = [
