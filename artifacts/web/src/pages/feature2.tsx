@@ -10,8 +10,8 @@ interface CompanyConfig {
 }
 
 const companyConfigs: Record<string, CompanyConfig> = {
-  A: {
-    label: "A사",
+  hanyoungnux: {
+    label: "한영넉스",
     searchColumn: "품목명",
     description: "품목명 기준 검색",
   },
@@ -23,7 +23,7 @@ const companyConfigs: Record<string, CompanyConfig> = {
 };
 
 export default function Feature2() {
-  const [selectedCompany, setSelectedCompany] = useState<string>("A");
+  const [selectedCompany, setSelectedCompany] = useState<string>("hanyoungnux");
   const [fileName, setFileName] = useState<string>("");
   const [globalData, setGlobalData] = useState<Record<string, string>[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
