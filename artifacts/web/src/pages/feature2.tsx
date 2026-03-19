@@ -119,7 +119,7 @@ export default function Feature2() {
           <div className="mb-6">
             <h1 className="text-xl font-bold text-gray-900">업체별 발주서 맞춤 검색</h1>
             <p className="text-sm text-gray-500 mt-1">
-              담당 업체를 선택하고 발주서 엑셀 파일을 업로드하면 자동으로 데이터를 인식합니다.
+              담당 업체를 선택하고 발주서 엑셀 파일을 업로드하면 설정된 양식에 맞추어 엑셀이 생성됩니다.
             </p>
           </div>
 
