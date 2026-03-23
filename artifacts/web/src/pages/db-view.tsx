@@ -330,16 +330,29 @@ export default function DbView() {
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr className="bg-gray-50 border-t-2 border-gray-200">
-                      <td colSpan={5} className="px-3 py-3 text-right text-xs font-semibold text-gray-600">합계</td>
-                      <td className="px-3 py-3 text-center text-xs font-bold text-gray-800 border-r border-gray-100">
-                        {(filteredRows || []).reduce((s, r) => s + (Number(r["합계"]) || 0), 0).toLocaleString()}
-                      </td>
-                      <td className="px-3 py-3 text-center text-xs font-bold text-amber-700 border-r border-gray-100">
-                        {(filteredRows || []).reduce((s, r) => s + (Number(r["합계(원가)"]) || 0), 0).toLocaleString()}
-                      </td>
-                      <td className="px-3 py-3 border-r border-gray-100" />
-                    </tr>
+                    {(() => {
+                      const totalSales = (filteredRows || []).reduce((s, r) => s + (Number(r["합계"]) || 0), 0);
+                      const totalCost  = (filteredRows || []).reduce((s, r) => s + (Number(r["합계(원가)"]) || 0), 0);
+                      const margin     = totalSales - totalCost;
+                      return (
+                        <tr className="bg-gray-100 border-t-2 border-gray-300">
+                          <td colSpan={9} className="px-5 py-3">
+                            <div className="flex items-center gap-2 text-xs font-bold justify-end flex-wrap">
+                              <span className="text-gray-500 font-semibold">납품가 합계</span>
+                              <span className="text-gray-900 text-sm">{totalSales.toLocaleString()}</span>
+                              <span className="text-gray-400 mx-1">−</span>
+                              <span className="text-gray-500 font-semibold">원가 합계</span>
+                              <span className="text-gray-900 text-sm">{totalCost.toLocaleString()}</span>
+                              <span className="text-gray-400 mx-1">=</span>
+                              <span className="text-gray-500 font-semibold">마진</span>
+                              <span className={`text-sm ${margin >= 0 ? "text-blue-600" : "text-red-600"}`}>
+                                {margin.toLocaleString()}
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })()}
                   </tfoot>
                 </table>
               </div>
