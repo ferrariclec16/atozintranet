@@ -40,7 +40,7 @@ interface HistoryRow {
 }
 
 router.post("/purchase-history/upload", requireAuth, async (req, res) => {
-  const { rows, fileName } = req.body as { rows?: HistoryRow[]; fileName?: string };
+  const { rows, fileName, replace } = req.body as { rows?: HistoryRow[]; fileName?: string; replace?: boolean };
   if (!rows || rows.length === 0) {
     return res.status(400).json({ error: "업로드할 데이터가 없습니다." });
   }
@@ -53,49 +53,87 @@ router.post("/purchase-history/upload", requireAuth, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+
+    // DB 형식 업로드는 기존 데이터 삭제 후 전량 INSERT (중복 없이 109개 전부 저장)
+    if (replace && companyName) {
+      await client.query(
+        `DELETE FROM purchase_history WHERE company_name = $1`,
+        [companyName]
+      );
+    }
+
     let inserted = 0;
     for (const row of rows) {
       if (!row.item_name) continue;
-      await client.query(
-        `INSERT INTO purchase_history
-           (company_name, order_date, due_date, order_type, item_code, order_no,
-            item_name, order_qty, order_price, delivery_amount, delivery_status, note,
-            purchase_price, supplier)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-         ON CONFLICT (
-           company_name,
-           COALESCE(item_code, ''),
-           COALESCE(order_no, ''),
-           COALESCE(order_qty::text, '0'),
-           COALESCE(order_price::text, '0')
-         ) DO UPDATE SET
-           delivery_status  = EXCLUDED.delivery_status,
-           item_name        = EXCLUDED.item_name,
-           order_date       = EXCLUDED.order_date,
-           due_date         = EXCLUDED.due_date,
-           order_type       = EXCLUDED.order_type,
-           delivery_amount  = EXCLUDED.delivery_amount,
-           note             = EXCLUDED.note,
-           purchase_price   = EXCLUDED.purchase_price,
-           supplier         = EXCLUDED.supplier,
-           uploaded_at      = NOW()`,
-        [
-          row.company_name || null,
-          row.order_date || null,
-          row.due_date || null,
-          row.order_type || null,
-          row.item_code || null,
-          row.order_no || null,
-          row.item_name,
-          row.order_qty || 0,
-          row.order_price || 0,
-          row.delivery_amount || 0,
-          row.delivery_status || null,
-          row.note || null,
-          row.purchase_price || null,
-          row.supplier || null,
-        ]
-      );
+
+      if (replace) {
+        // DB 형식: 단순 INSERT (중복 걱정 없음, 위에서 전체 삭제했으므로)
+        await client.query(
+          `INSERT INTO purchase_history
+             (company_name, order_date, due_date, order_type, item_code, order_no,
+              item_name, order_qty, order_price, delivery_amount, delivery_status, note,
+              purchase_price, supplier)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+          [
+            row.company_name || null,
+            row.order_date || null,
+            row.due_date || null,
+            row.order_type || null,
+            row.item_code || null,
+            row.order_no || null,
+            row.item_name,
+            row.order_qty || 0,
+            row.order_price || 0,
+            row.delivery_amount || 0,
+            row.delivery_status || null,
+            row.note || null,
+            row.purchase_price || null,
+            row.supplier || null,
+          ]
+        );
+      } else {
+        // 발주서 형식: UPSERT (중복 방지)
+        await client.query(
+          `INSERT INTO purchase_history
+             (company_name, order_date, due_date, order_type, item_code, order_no,
+              item_name, order_qty, order_price, delivery_amount, delivery_status, note,
+              purchase_price, supplier)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+           ON CONFLICT (
+             company_name,
+             COALESCE(item_code, ''),
+             COALESCE(order_no, ''),
+             COALESCE(order_qty::text, '0'),
+             COALESCE(order_price::text, '0')
+           ) DO UPDATE SET
+             delivery_status  = EXCLUDED.delivery_status,
+             item_name        = EXCLUDED.item_name,
+             order_date       = EXCLUDED.order_date,
+             due_date         = EXCLUDED.due_date,
+             order_type       = EXCLUDED.order_type,
+             delivery_amount  = EXCLUDED.delivery_amount,
+             note             = EXCLUDED.note,
+             purchase_price   = EXCLUDED.purchase_price,
+             supplier         = EXCLUDED.supplier,
+             uploaded_at      = NOW()`,
+          [
+            row.company_name || null,
+            row.order_date || null,
+            row.due_date || null,
+            row.order_type || null,
+            row.item_code || null,
+            row.order_no || null,
+            row.item_name,
+            row.order_qty || 0,
+            row.order_price || 0,
+            row.delivery_amount || 0,
+            row.delivery_status || null,
+            row.note || null,
+            row.purchase_price || null,
+            row.supplier || null,
+          ]
+        );
+      }
       inserted++;
     }
     await client.query("COMMIT");

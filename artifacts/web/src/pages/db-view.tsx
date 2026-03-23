@@ -277,14 +277,11 @@ export default function DbView() {
                   <thead>
                     <tr className="bg-gray-800">
                       <th className="px-3 py-3 text-center text-xs font-medium text-gray-400 border-r border-gray-700 w-10">#</th>
-                      {DB_VIEW_COLUMNS.map((col) => {
-                        const isCostCol = ["원가", "합계(원가)", "구매처"].includes(col);
-                        return (
-                          <th key={col} className={`px-3 py-3 text-center text-xs font-medium whitespace-nowrap border-r border-gray-700 last:border-r-0 ${isCostCol ? "text-yellow-300" : "text-white"}`}>
-                            {col}
-                          </th>
-                        );
-                      })}
+                      {DB_VIEW_COLUMNS.map((col) => (
+                        <th key={col} className="px-3 py-3 text-center text-xs font-medium text-white whitespace-nowrap border-r border-gray-700 last:border-r-0">
+                          {col}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -292,7 +289,6 @@ export default function DbView() {
                       <tr key={i} className={`hover:bg-gray-50 transition-colors ${i % 2 === 0 ? "" : "bg-gray-50/50"}`}>
                         <td className="px-3 py-2.5 text-center text-xs text-gray-400 border-r border-gray-100">{i + 1}</td>
                         {DB_VIEW_COLUMNS.map((col) => {
-                          const isCostCol = ["원가", "합계(원가)", "구매처"].includes(col);
                           const val = row[col];
                           let displayVal = "";
                           if (typeof val === "number" && val !== 0) {
@@ -326,8 +322,8 @@ export default function DbView() {
                           }
 
                           return (
-                            <td key={col} className={`px-3 py-2.5 text-center whitespace-nowrap border-r border-gray-100 last:border-r-0 text-xs ${isCostCol ? "text-amber-700 bg-amber-50/40 font-medium" : "text-gray-700"} ${col === "구매처" && !displayVal ? "text-red-400 italic" : ""}`}>
-                              {col === "구매처" && !displayVal ? "미등록" : displayVal}
+                            <td key={col} className="px-3 py-2.5 text-center whitespace-nowrap border-r border-gray-100 last:border-r-0 text-xs text-gray-700">
+                              {displayVal}
                             </td>
                           );
                         })}

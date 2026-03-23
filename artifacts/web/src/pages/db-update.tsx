@@ -139,7 +139,7 @@ export default function DbUpdate() {
 
     for (const file of pendingFiles) {
       try {
-        const rows = await parseExcel(file, mapping, selectedCompany);
+        const { rows, isDbFormat } = await parseExcel(file, mapping, selectedCompany);
         if (rows.length === 0) {
           results.push({ fileName: file.name, inserted: 0, status: "error", message: "품목명이 없는 행만 있습니다." });
           continue;
@@ -148,7 +148,7 @@ export default function DbUpdate() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ rows, fileName: file.name }),
+          body: JSON.stringify({ rows, fileName: file.name, replace: isDbFormat }),
         });
         if (!res.ok) {
           const text = await res.text();
@@ -196,7 +196,7 @@ export default function DbUpdate() {
     file: File,
     mapping: MappingJson,
     companyName: string
-  ): Promise<object[]> => {
+  ): Promise<{ rows: object[]; isDbFormat: boolean }> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -234,8 +234,11 @@ export default function DbUpdate() {
               note: r[mapping.note.trim()] || null,
             }));
 
+          let isDbFormat = false;
+
           // ② DB 형식 자동 감지: 품명, 수량, 납품가 컬럼이 있으면
           if (rows.length === 0 && normRows.length > 0 && normRows[0]["품명"]) {
+            isDbFormat = true;
             rows = normRows
               .filter((r) => r["품명"])
               .map((r) => {
@@ -260,7 +263,7 @@ export default function DbUpdate() {
               });
           }
 
-          resolve(rows);
+          resolve({ rows, isDbFormat });
         } catch (err) { reject(err); }
       };
       reader.onerror = reject;
