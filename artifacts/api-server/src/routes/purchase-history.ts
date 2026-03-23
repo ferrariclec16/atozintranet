@@ -58,7 +58,22 @@ router.post("/purchase-history/upload", requireAuth, async (req, res) => {
         `INSERT INTO purchase_history
            (company_name, order_date, due_date, order_type, item_code, order_no,
             item_name, order_qty, order_price, delivery_amount, delivery_status, note)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         ON CONFLICT (
+           company_name,
+           COALESCE(item_code, ''),
+           COALESCE(order_no, ''),
+           COALESCE(order_qty::text, '0'),
+           COALESCE(order_price::text, '0')
+         ) DO UPDATE SET
+           delivery_status  = EXCLUDED.delivery_status,
+           item_name        = EXCLUDED.item_name,
+           order_date       = EXCLUDED.order_date,
+           due_date         = EXCLUDED.due_date,
+           order_type       = EXCLUDED.order_type,
+           delivery_amount  = EXCLUDED.delivery_amount,
+           note             = EXCLUDED.note,
+           uploaded_at      = NOW()`,
         [
           row.company_name || null,
           row.order_date || null,
