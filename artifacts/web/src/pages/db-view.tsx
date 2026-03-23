@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Sidebar } from "@/components/layout/sidebar";
 import {
-  ChevronDown, Download, Loader2, DatabaseZap,
+  ChevronDown, Download, Loader2, DatabaseZap, Search, Copy, Check,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
@@ -12,8 +12,7 @@ const supabase = createClient(
 );
 
 const DB_VIEW_COLUMNS = [
-  "품목코드", "품명", "발주일자", "발주번호",
-  "수량", "납품가", "합계", "원가", "합계(원가)", "구매처",
+  "품목코드", "품명", "수량", "납품가", "합계", "원가", "합계(원가)", "구매처",
 ];
 
 type OutputRow = Record<string, string | number>;
@@ -47,6 +46,8 @@ export default function DbView() {
   const [isLoadingCompanies, setIsLoadingCompanies] = useState(true);
   const [dbViewRows, setDbViewRows] = useState<OutputRow[] | null>(null);
   const [isLoadingDb, setIsLoadingDb] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -58,7 +59,7 @@ export default function DbView() {
           const names = (json.stats || []).map((s: { company_name: string }) => s.company_name);
           setCompanies(names);
         }
-      } catch { /* ignore */ }
+      } catch { }
       setIsLoadingCompanies(false);
     })();
   }, []);
@@ -66,6 +67,7 @@ export default function DbView() {
   const loadDbView = async (company: string) => {
     setIsLoadingDb(true);
     setDbViewRows(null);
+    setSearchQuery("");
     try {
       const res = await fetch(
         `/api/purchase-history/list?company=${encodeURIComponent(company)}`,
@@ -87,7 +89,6 @@ export default function DbView() {
 
       const viewRows: OutputRow[] = rows.map((row) => {
         const db = masterMap[row.item_name] ?? ({} as MasterData);
-        // purchase_history에 저장된 원가·구매처 우선, 없으면 Supabase master_data fallback
         const cost = Number(row.purchase_price) || parseFloat(String(db.purchase_price ?? "")) || 0;
         const supplierVal = row.supplier || db.supplier || "";
         const qty = Number(row.order_qty) || 0;
@@ -96,8 +97,6 @@ export default function DbView() {
         return {
           "품목코드": row.item_code ?? "",
           "품명": row.item_name ?? "",
-          "발주일자": row.order_date ?? "",
-          "발주번호": row.order_no ?? "",
           "수량": qty,
           "납품가": price,
           "합계": total,
@@ -114,11 +113,29 @@ export default function DbView() {
     setIsLoadingDb(false);
   };
 
+  const filteredRows = useMemo(() => {
+    if (!dbViewRows) return null;
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return dbViewRows;
+    return dbViewRows.filter((r) =>
+      String(r["품목코드"] ?? "").toLowerCase().includes(q) ||
+      String(r["품명"] ?? "").toLowerCase().includes(q) ||
+      String(r["구매처"] ?? "").toLowerCase().includes(q)
+    );
+  }, [dbViewRows, searchQuery]);
+
+  const handleCopy = (code: string) => {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopiedCode(code);
+      setTimeout(() => setCopiedCode(null), 1500);
+    });
+  };
+
   const handleDownloadDbFormat = () => {
-    if (!dbViewRows || !dbViewRows.length) return;
+    if (!filteredRows || !filteredRows.length) return;
     const header = ["품목코드", "품명", "수량", "납품가", "합계", "", "원가", "합계(원가)", "구매처"];
     const aoa: (string | number)[][] = [header];
-    dbViewRows.forEach((r) => {
+    filteredRows.forEach((r) => {
       aoa.push([
         String(r["품목코드"] ?? ""),
         String(r["품명"] ?? ""),
@@ -156,10 +173,10 @@ export default function DbView() {
             </p>
           </div>
 
-          {/* 업체 선택 + Excel 출력 */}
+          {/* 업체 선택 + 검색 + Excel 출력 */}
           <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4 shadow-sm">
             <div className="flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 flex-wrap">
                 <span className="font-semibold text-gray-800">업체 선택</span>
                 {isLoadingCompanies ? (
                   <div className="flex items-center gap-2 text-sm text-gray-400">
@@ -199,6 +216,28 @@ export default function DbView() {
                 </button>
               )}
             </div>
+
+            {/* 검색창 */}
+            {dbViewRows !== null && dbViewRows.length > 0 && (
+              <div className="mt-4 relative">
+                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="품목코드, 품명, 구매처 검색..."
+                  className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 placeholder-gray-400"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs font-medium"
+                  >
+                    지우기
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* 조회 테이블 */}
@@ -206,9 +245,12 @@ export default function DbView() {
             <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
               <DatabaseZap className="w-5 h-5 text-blue-500" />
               <span className="font-semibold text-gray-800">{selectedCompany || "—"} 발주 이력</span>
-              {dbViewRows !== null && (
-                <span className={`text-sm font-medium px-2.5 py-0.5 rounded-full ${dbViewRows.length > 0 ? "bg-blue-50 text-blue-700" : "bg-gray-100 text-gray-400"}`}>
-                  {dbViewRows.length}건
+              {filteredRows !== null && (
+                <span className={`text-sm font-medium px-2.5 py-0.5 rounded-full ${filteredRows.length > 0 ? "bg-blue-50 text-blue-700" : "bg-gray-100 text-gray-400"}`}>
+                  {filteredRows.length}건
+                  {searchQuery && dbViewRows && filteredRows.length !== dbViewRows.length && (
+                    <span className="text-gray-400 font-normal ml-1">/ 전체 {dbViewRows.length}건</span>
+                  )}
                 </span>
               )}
             </div>
@@ -222,11 +264,12 @@ export default function DbView() {
                 <DatabaseZap className="w-10 h-10 text-gray-200 mb-3" />
                 <p className="text-sm text-gray-400">업체를 선택하면 이력을 조회합니다.</p>
               </div>
-            ) : dbViewRows.length === 0 ? (
+            ) : filteredRows !== null && filteredRows.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
-                <DatabaseZap className="w-10 h-10 text-gray-200 mb-3" />
-                <p className="text-sm font-medium text-gray-500">저장된 발주 이력이 없습니다</p>
-                <p className="text-xs text-gray-400 mt-1">발주서 정리 페이지에서 발주완결 항목을 DB에 저장해 주세요.</p>
+                <Search className="w-10 h-10 text-gray-200 mb-3" />
+                <p className="text-sm font-medium text-gray-500">
+                  {searchQuery ? `"${searchQuery}" 검색 결과가 없습니다` : "저장된 발주 이력이 없습니다"}
+                </p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -245,7 +288,7 @@ export default function DbView() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {dbViewRows.map((row, i) => (
+                    {(filteredRows || []).map((row, i) => (
                       <tr key={i} className={`hover:bg-gray-50 transition-colors ${i % 2 === 0 ? "" : "bg-gray-50/50"}`}>
                         <td className="px-3 py-2.5 text-center text-xs text-gray-400 border-r border-gray-100">{i + 1}</td>
                         {DB_VIEW_COLUMNS.map((col) => {
@@ -257,6 +300,31 @@ export default function DbView() {
                           } else {
                             displayVal = String(val ?? "");
                           }
+
+                          if (col === "품목코드") {
+                            const code = String(val ?? "");
+                            const isCopied = copiedCode === code && code !== "";
+                            return (
+                              <td key={col} className="px-3 py-2.5 text-center whitespace-nowrap border-r border-gray-100 text-xs text-gray-700">
+                                <div className="flex items-center justify-center gap-1.5 group">
+                                  <span>{displayVal}</span>
+                                  {code && (
+                                    <button
+                                      onClick={() => handleCopy(code)}
+                                      className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-blue-600"
+                                      title="복사"
+                                    >
+                                      {isCopied
+                                        ? <Check className="w-3 h-3 text-green-500" />
+                                        : <Copy className="w-3 h-3" />
+                                      }
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            );
+                          }
+
                           return (
                             <td key={col} className={`px-3 py-2.5 text-center whitespace-nowrap border-r border-gray-100 last:border-r-0 text-xs ${isCostCol ? "text-amber-700 bg-amber-50/40 font-medium" : "text-gray-700"} ${col === "구매처" && !displayVal ? "text-red-400 italic" : ""}`}>
                               {col === "구매처" && !displayVal ? "미등록" : displayVal}
@@ -268,12 +336,12 @@ export default function DbView() {
                   </tbody>
                   <tfoot>
                     <tr className="bg-gray-50 border-t-2 border-gray-200">
-                      <td colSpan={7} className="px-3 py-3 text-right text-xs font-semibold text-gray-600">합계</td>
+                      <td colSpan={5} className="px-3 py-3 text-right text-xs font-semibold text-gray-600">합계</td>
                       <td className="px-3 py-3 text-center text-xs font-bold text-gray-800 border-r border-gray-100">
-                        {dbViewRows.reduce((s, r) => s + (Number(r["합계"]) || 0), 0).toLocaleString()}
+                        {(filteredRows || []).reduce((s, r) => s + (Number(r["합계"]) || 0), 0).toLocaleString()}
                       </td>
                       <td className="px-3 py-3 text-center text-xs font-bold text-amber-700 border-r border-gray-100">
-                        {dbViewRows.reduce((s, r) => s + (Number(r["합계(원가)"]) || 0), 0).toLocaleString()}
+                        {(filteredRows || []).reduce((s, r) => s + (Number(r["합계(원가)"]) || 0), 0).toLocaleString()}
                       </td>
                       <td className="px-3 py-3 border-r border-gray-100" />
                     </tr>
