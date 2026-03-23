@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from "react";
 import { Sidebar } from "@/components/layout/sidebar";
 import * as XLSX from "xlsx";
 
-const WHITELIST = ["digi", "mouser", "arrow", "farnell", "element14", "tti", "verical", "future", "chip one"];
+const WHITELIST = ["digi", "mouser", "arrow", "farnell", "element14", "tti", "verical", "future", "chip one", "texas"];
 
 function checkTrusted(name: string): boolean {
   const lower = name.toLowerCase();

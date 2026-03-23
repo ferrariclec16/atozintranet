@@ -130,6 +130,7 @@ router.post("/parts/export", async (req, res) => {
         offers.find((o) => {
           const cn = o.company.toLowerCase().replace(/-/g, "");
           const dn = dist.toLowerCase().replace(/-/g, "");
+          if (dn === "ti") return cn === "ti" || cn.includes("texas");
           return cn.includes(dn) || dn.includes(cn);
         }) ?? null
       );
