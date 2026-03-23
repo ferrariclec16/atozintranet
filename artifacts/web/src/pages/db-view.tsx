@@ -155,14 +155,14 @@ export default function DbView() {
         <header className="h-14 px-8 flex items-center border-b border-gray-200 bg-white">
           <span className="text-sm text-gray-400">메뉴</span>
           <span className="mx-2 text-gray-300">/</span>
-          <span className="text-sm font-semibold text-gray-700">DB 조회</span>
+          <span className="text-sm font-semibold text-gray-700">DB</span>
         </header>
 
         <div className="flex-1 p-8 max-w-6xl w-full mx-auto">
           <div className="mb-6">
-            <h1 className="text-xl font-bold text-gray-900">DB 조회</h1>
+            <h1 className="text-xl font-bold text-gray-900">DB</h1>
             <p className="text-sm text-gray-500 mt-1">
-              업체별 발주 이력을 조회하고 DB형식 Excel로 출력합니다.
+              업체별 DB를 조회하고 Excel로 출력합니다.
             </p>
           </div>
 
@@ -237,7 +237,7 @@ export default function DbView() {
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
               <DatabaseZap className="w-5 h-5 text-blue-500" />
-              <span className="font-semibold text-gray-800">{selectedCompany || "—"} 발주 이력</span>
+              <span className="font-semibold text-gray-800">{selectedCompany || "—"} DB</span>
               {filteredRows !== null && (
                 <span className={`text-sm font-medium px-2.5 py-0.5 rounded-full ${filteredRows.length > 0 ? "bg-blue-50 text-blue-700" : "bg-gray-100 text-gray-400"}`}>
                   {filteredRows.length}건
@@ -261,7 +261,7 @@ export default function DbView() {
               <div className="flex flex-col items-center justify-center py-16 text-center">
                 <Search className="w-10 h-10 text-gray-200 mb-3" />
                 <p className="text-sm font-medium text-gray-500">
-                  {searchQuery ? `"${searchQuery}" 검색 결과가 없습니다` : "저장된 발주 이력이 없습니다"}
+                  {searchQuery ? `"${searchQuery}" 검색 결과가 없습니다` : "저장된 데이터가 없습니다"}
                 </p>
               </div>
             ) : (
