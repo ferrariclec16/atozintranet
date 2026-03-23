@@ -62,15 +62,12 @@ export function Sidebar() {
   return (
     <aside className="w-64 border-r border-gray-200 bg-white flex flex-col h-screen sticky top-0 shadow-sm">
       {/* Brand Header */}
-      <div className="h-16 px-4 flex items-center justify-between border-b border-gray-200">
+      <div className="h-16 px-4 flex items-center border-b border-gray-200">
         <img
           src="/logo.png"
           alt="AtoZ ELECTRON"
           className="h-10 object-contain"
         />
-        <span className="text-[10px] text-blue-500 font-semibold tracking-widest uppercase flex-shrink-0">
-          인트라넷
-        </span>
       </div>
 
       {/* Navigation */}
