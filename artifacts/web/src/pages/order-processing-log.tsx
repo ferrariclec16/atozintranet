@@ -39,7 +39,7 @@ export default function OrderProcessingLog() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
@@ -68,24 +68,31 @@ export default function OrderProcessingLog() {
   useEffect(() => { fetchLogs(); }, []);
 
   const handleSelect = (id: number) => {
-    setSelectedId((prev) => (prev === id ? null : id));
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
   };
 
+  const selectAll = () => setSelectedIds(logs.map((l) => l.id));
+  const clearAll = () => setSelectedIds([]);
+
   const handleDelete = () => {
-    if (!selectedId) return;
+    if (selectedIds.length === 0) return;
     setShowDeleteConfirm(true);
   };
 
   const doDelete = async () => {
-    if (!selectedId) return;
+    if (selectedIds.length === 0) return;
     setShowDeleteConfirm(false);
     setIsDeleting(true);
     try {
-      await fetch(`${BASE}/api/order-processing-log/${selectedId}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      setSelectedId(null);
+      for (const id of selectedIds) {
+        await fetch(`${BASE}/api/order-processing-log/${id}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+      }
+      setSelectedIds([]);
       await fetchLogs();
     } catch (e: any) {
       setError(e.message);
@@ -143,7 +150,7 @@ export default function OrderProcessingLog() {
       : modalRows
     : null;
 
-  const selectedLog = logs.find((l) => l.id === selectedId);
+  const selectedLog = selectedIds.length === 1 ? logs.find((l) => l.id === selectedIds[0]) : undefined;
 
   return (
     <div className="flex min-h-screen bg-gray-50">
@@ -161,11 +168,11 @@ export default function OrderProcessingLog() {
               <h1 className="text-xl font-bold text-gray-900">발주서 기록</h1>
               <p className="text-sm text-gray-500 mt-1">저장된 발주 정리 결과를 조회하고 다운로드할 수 있습니다.</p>
             </div>
-            {selectedId && (
+            {selectedIds.length > 0 && (
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => selectedLog && openModal(selectedLog)}
-                  disabled={isLoadingModal}
+                  disabled={isLoadingModal || selectedIds.length !== 1}
                   className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
                 >
                   {isLoadingModal ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
@@ -173,7 +180,8 @@ export default function OrderProcessingLog() {
                 </button>
                 <button
                   onClick={() => selectedLog && handleDownload(selectedLog)}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors"
+                  disabled={selectedIds.length !== 1}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
                 >
                   <Download className="w-4 h-4" />
                   Excel 다운로드
@@ -193,6 +201,26 @@ export default function OrderProcessingLog() {
             <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-lg mb-4 text-sm text-red-700">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
               {error}
+            </div>
+          )}
+
+          {logs.length > 0 && (
+            <div className="flex items-center gap-2 mb-2">
+              <button
+                onClick={selectAll}
+                className="px-2.5 py-1 text-xs text-gray-500 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+              >
+                전체선택
+              </button>
+              <button
+                onClick={clearAll}
+                className="px-2.5 py-1 text-xs text-gray-500 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+              >
+                전체해제
+              </button>
+              {selectedIds.length > 0 && (
+                <span className="text-xs text-blue-600 font-medium">{selectedIds.length}개 선택됨</span>
+              )}
             </div>
           )}
 
@@ -221,7 +249,7 @@ export default function OrderProcessingLog() {
                 <tbody className="divide-y divide-gray-100">
                   {logs.map((log, i) => {
                     const { date, time } = formatKst(log.saved_at);
-                    const isSelected = selectedId === log.id;
+                    const isSelected = selectedIds.includes(log.id);
                     return (
                       <tr
                         key={log.id}
@@ -407,19 +435,21 @@ export default function OrderProcessingLog() {
               </div>
               <h3 className="text-base font-semibold text-gray-900">기록 삭제</h3>
             </div>
-            {(() => {
-              const log = logs.find((l) => l.id === selectedId);
-              return log ? (
-                <>
-                  <p className="text-sm text-gray-600 mb-1">아래 발주서 기록이 삭제됩니다.</p>
-                  <p className="text-sm font-semibold text-gray-900 mb-5">
-                    {log.company_name} — {log.file_name}
-                  </p>
-                </>
-              ) : (
-                <p className="text-sm text-gray-600 mb-5">선택한 기록이 삭제됩니다.</p>
-              );
-            })()}
+            {selectedIds.length === 1 && selectedLog ? (
+              <>
+                <p className="text-sm text-gray-600 mb-1">아래 발주서 기록이 삭제됩니다.</p>
+                <p className="text-sm font-semibold text-gray-900 mb-5">
+                  {selectedLog.company_name} — {selectedLog.file_name}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-gray-600 mb-1">선택한 발주서 기록이 삭제됩니다.</p>
+                <p className="text-sm font-semibold text-gray-900 mb-5">
+                  총 {selectedIds.length}건
+                </p>
+              </>
+            )}
             <div className="flex gap-2">
               <button
                 onClick={() => setShowDeleteConfirm(false)}

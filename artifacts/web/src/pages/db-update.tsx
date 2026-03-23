@@ -581,7 +581,7 @@ export default function DbUpdate() {
               <h3 className="text-base font-semibold text-gray-900">데이터 삭제</h3>
             </div>
             <p className="text-sm text-gray-600 mb-1">
-              아래 업체의 모든 발주 이력이 삭제됩니다.
+              아래 업체의 DB가 삭제됩니다.
             </p>
             <p className="text-sm font-semibold text-gray-900 mb-5">
               "{confirmDeleteTarget}"
