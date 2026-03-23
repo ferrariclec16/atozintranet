@@ -174,6 +174,25 @@ router.get("/purchase-history/stats", requireAuth, async (req, res) => {
   }
 });
 
+// ── 업체별 전체 목록 (GET /purchase-history/list?company=xxx) ────
+router.get("/purchase-history/list", requireAuth, async (req, res) => {
+  const company = String(req.query.company || "").trim();
+  try {
+    const result = company
+      ? await pool.query(
+          "SELECT * FROM purchase_history WHERE company_name = $1 ORDER BY order_date DESC NULLS LAST, id DESC",
+          [company]
+        )
+      : await pool.query(
+          "SELECT * FROM purchase_history ORDER BY order_date DESC NULLS LAST, id DESC"
+        );
+    return res.json({ rows: result.rows });
+  } catch (e) {
+    console.error("[목록 조회 오류]", e);
+    return res.status(500).json({ error: "조회 중 오류가 발생했습니다." });
+  }
+});
+
 // ── 업체별 이력 삭제 (DELETE /purchase-history/company/:name) ─────
 router.delete("/purchase-history/company/:name", requireAuth, async (req, res) => {
   if (req.session?.role !== "admin") {
