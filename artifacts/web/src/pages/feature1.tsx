@@ -99,6 +99,7 @@ export default function Feature1() {
   const [isDragging, setIsDragging] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalRows, setModalRows] = useState<ModalRow[]>([{ id: 1, part: "", qty: "" }]);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const nextModalId = useRef(2);
 
@@ -138,7 +139,18 @@ export default function Feature1() {
     setLoading(false);
   };
 
-  const processExcelFile = useCallback((file: File) => {
+  const setPendingFileFromList = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    if (files.length > 1) {
+      alert("한 번에 하나의 파일만 업로드할 수 있습니다.");
+      return;
+    }
+    setPendingFile(files[0]);
+  };
+
+  const startExcelSearch = useCallback(() => {
+    if (!pendingFile) return;
+    const file = pendingFile;
     const reader = new FileReader();
     reader.onload = async (e) => {
       const data = new Uint8Array(e.target!.result as ArrayBuffer);
@@ -150,15 +162,12 @@ export default function Feature1() {
         if (!row[0] || ["품명", "부품명"].includes(String(row[0]).trim())) return;
         let raw = String(row[0]).trim();
 
-        // Rule 1: "A -> B" → B만 사용
         if (raw.includes("->")) {
           raw = raw.split("->").pop()!.trim();
         }
 
-        // Rule 2: "A,B" → B만 사용 (기존 동작)
         const baseName = raw.includes(",") ? raw.split(",").pop()!.trim() : raw;
 
-        // Rule 3: "abc(def)" → abc 와 def 모두 검색
         const names: string[] = [];
         const parenMatch = baseName.match(/^(.+?)\((.+?)\)(.*)$/);
         if (parenMatch) {
@@ -182,7 +191,7 @@ export default function Feature1() {
       await processParts(parts);
     };
     reader.readAsArrayBuffer(file);
-  }, []);
+  }, [pendingFile]);
 
   const downloadBatchExcel = async () => {
     if (results.length === 0) return;
@@ -252,6 +261,12 @@ export default function Feature1() {
                 📝 직접 엑셀 만들기
               </button>
               <button
+                onClick={() => fileInputRef.current?.click()}
+                className="px-4 py-2 bg-indigo-500 text-white text-sm font-bold rounded-lg hover:bg-indigo-600 transition-colors"
+              >
+                📂 엑셀 검색
+              </button>
+              <button
                 onClick={downloadBatchExcel}
                 disabled={results.length === 0}
                 className="px-4 py-2 bg-green-700 text-white text-sm font-bold rounded-lg hover:bg-green-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
@@ -288,18 +303,47 @@ export default function Feature1() {
           </div>
 
           {/* 드래그 앤 드롭 */}
-          <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) processExcelFile(f); e.target.value = ""; }} />
-          <div
-            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-            onDragLeave={() => setIsDragging(false)}
-            onDrop={(e) => { e.preventDefault(); setIsDragging(false); const f = e.dataTransfer.files[0]; if (f) processExcelFile(f); }}
-            onClick={() => fileInputRef.current?.click()}
-            className={`w-full py-8 border-2 border-dashed rounded-xl text-center cursor-pointer mb-6 transition-colors ${isDragging ? "border-blue-500 bg-blue-50" : "border-blue-300 bg-blue-50/50 hover:bg-blue-50"}`}
-          >
-            <p className="text-blue-600 font-bold text-base">📁 이곳에 엑셀 파일을 드래그해서 넣거나 클릭하여 업로드하세요.</p>
-            <p className="text-gray-400 text-sm mt-1">(A열: 부품명, B열: 필요 수량) 형식으로 작성된 엑셀</p>
-          </div>
+          <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" multiple
+            onChange={(e) => { setPendingFileFromList(e.target.files); e.target.value = ""; }} />
+
+          {pendingFile ? (
+            <div className="w-full mb-6 border-2 border-blue-400 bg-blue-50 rounded-xl px-6 py-5 flex items-center gap-4">
+              <span className="text-2xl">📄</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-800 truncate">{pendingFile.name}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{(pendingFile.size / 1024).toFixed(1)} KB</p>
+              </div>
+              <button
+                onClick={() => { setPendingFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}
+                className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-gray-200 hover:bg-red-100 text-gray-500 hover:text-red-600 text-lg font-bold transition-colors"
+                title="파일 삭제"
+              >×</button>
+              <button
+                onClick={startExcelSearch}
+                disabled={loading}
+                className="flex-shrink-0 px-5 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+              >
+                🔍 검색 시작
+              </button>
+            </div>
+          ) : (
+            <div
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setIsDragging(false);
+                const files = e.dataTransfer.files;
+                if (files.length > 1) { alert("한 번에 하나의 파일만 업로드할 수 있습니다."); return; }
+                if (files.length === 1) setPendingFile(files[0]);
+              }}
+              onClick={() => fileInputRef.current?.click()}
+              className={`w-full py-8 border-2 border-dashed rounded-xl text-center cursor-pointer mb-6 transition-colors ${isDragging ? "border-blue-500 bg-blue-50" : "border-blue-300 bg-blue-50/50 hover:bg-blue-50"}`}
+            >
+              <p className="text-blue-600 font-bold text-base">📁 이곳에 엑셀 파일을 드래그해서 넣거나 클릭하여 업로드하세요.</p>
+              <p className="text-gray-400 text-sm mt-1">(A열: 부품명, B열: 필요 수량) 형식으로 작성된 엑셀</p>
+            </div>
+          )}
 
           {/* 로딩 */}
           {loading && (
