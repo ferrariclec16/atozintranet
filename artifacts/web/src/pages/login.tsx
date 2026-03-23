@@ -58,7 +58,7 @@ export default function Login() {
         </div>
 
         <p className="text-sm text-gray-500">
-          사번과 비밀번호를 입력하여 로그인하세요
+          아이디와 비밀번호를 입력하여 로그인하세요
         </p>
       </div>
 
@@ -75,12 +75,12 @@ export default function Login() {
           {/* Username */}
           <div className="space-y-1.5">
             <label className="block text-sm font-semibold text-gray-700">
-              사번
+              아이디
             </label>
             <input
               {...register("username")}
               type="text"
-              placeholder="사번을 입력하세요"
+              placeholder="아이디를 입력하세요"
               autoComplete="username"
               className={`w-full px-4 py-3 rounded-xl border text-sm text-gray-800 placeholder:text-gray-400 outline-none transition-all
                 ${errors.username

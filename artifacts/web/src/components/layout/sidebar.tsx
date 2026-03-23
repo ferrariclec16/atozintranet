@@ -6,10 +6,7 @@ import {
   UserCircle,
   Search,
   FileText,
-  FilePlus,
-  Key,
   ClipboardList,
-  ShieldAlert,
 } from "lucide-react";
 
 interface NavItem {
@@ -25,10 +22,7 @@ const commonNavItems: NavItem[] = [
 ];
 
 const adminNavItems: NavItem[] = [
-  { href: "/admin/license-issue", label: "신규 라이선스 발급", icon: <FilePlus className="w-4 h-4 flex-shrink-0" /> },
-  { href: "/admin/license-manage", label: "라이선스 관리", icon: <Key className="w-4 h-4 flex-shrink-0" /> },
   { href: "/admin/access-log", label: "접속 기록", icon: <ClipboardList className="w-4 h-4 flex-shrink-0" /> },
-  { href: "/admin/security", label: "보안 모니터링", icon: <ShieldAlert className="w-4 h-4 flex-shrink-0" /> },
 ];
 
 function NavLink({ item, active }: { item: NavItem; active: boolean }) {
