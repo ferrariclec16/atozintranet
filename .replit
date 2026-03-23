@@ -1,4 +1,4 @@
-modules = ["nodejs-24"]
+modules = ["nodejs-24", "postgresql-16"]
 
 [[artifacts]]
 id = "artifacts/api-server"
@@ -33,3 +33,6 @@ VITE_SUPABASE_URL = "https://ifkhmtqxqlqhfbawpyoy.supabase.co"
 VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlma2htdHF4cWxxaGZiYXdweW95Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMjM5ODAsImV4cCI6MjA4OTc5OTk4MH0.--Fn92kmDfvnQbffWhssSiYPKwvk6ST-BdI9C3m_7nE"
 NEXAR_CLIENT_ID = "c7961d13-23b1-4bab-a309-6f9edb4b920f"
 NEXAR_CLIENT_SECRET = "bdst541nz6QgEB7Sfd_KZqGr0R0GxsmzW7K9"
+
+[nix]
+channel = "stable-25_05"

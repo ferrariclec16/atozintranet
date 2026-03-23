@@ -1,15 +1,53 @@
 import { Router } from "express";
 import ExcelJS from "exceljs";
+import fs from "fs";
+import path from "path";
 
 const router = Router();
 
 const NEXAR_CLIENT_ID = process.env.NEXAR_CLIENT_ID!;
 const NEXAR_CLIENT_SECRET = process.env.NEXAR_CLIENT_SECRET!;
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+const CACHE_FILE = path.join(process.cwd(), ".cache", "parts-cache.json");
 
+// ── 파일 기반 캐시 (재시작해도 12시간 유지) ──────────────────────
 interface CacheEntry { data: unknown; cachedAt: number; }
-const searchCache = new Map<string, CacheEntry>();
+type CacheStore = Record<string, CacheEntry>;
 
+function loadCache(): CacheStore {
+  try {
+    fs.mkdirSync(path.dirname(CACHE_FILE), { recursive: true });
+    if (fs.existsSync(CACHE_FILE)) {
+      return JSON.parse(fs.readFileSync(CACHE_FILE, "utf-8")) as CacheStore;
+    }
+  } catch { /* 캐시 파일 없음 — 새로 시작 */ }
+  return {};
+}
+
+function saveCache(store: CacheStore): void {
+  try {
+    fs.mkdirSync(path.dirname(CACHE_FILE), { recursive: true });
+    fs.writeFileSync(CACHE_FILE, JSON.stringify(store), "utf-8");
+  } catch (e) {
+    console.error("[캐시 저장 실패]", e);
+  }
+}
+
+const cacheStore: CacheStore = loadCache();
+console.log(`[캐시 로드] ${Object.keys(cacheStore).length}개 부품 캐시 복원`);
+
+function getCached(key: string): CacheEntry | null {
+  const entry = cacheStore[key];
+  if (entry && Date.now() - entry.cachedAt < CACHE_TTL_MS) return entry;
+  return null;
+}
+
+function setCached(key: string, data: unknown): void {
+  cacheStore[key] = { data, cachedAt: Date.now() };
+  saveCache(cacheStore);
+}
+
+// ── Nexar API ─────────────────────────────────────────────────────
 async function getNexarToken(): Promise<string> {
   const response = await fetch("https://identity.nexar.com/connect/token", {
     method: "POST",
@@ -53,9 +91,10 @@ router.post("/parts/search", async (req, res) => {
   if (!part_number) return res.status(400).json({ status: "error", message: "부품 번호를 입력해주세요." });
 
   const cacheKey = part_number.trim().toLowerCase();
-  const cached = searchCache.get(cacheKey);
-  if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
-    console.log(`[캐시 HIT] ${part_number} (${Math.round((Date.now() - cached.cachedAt) / 60000)}분 전 캐시)`);
+  const cached = getCached(cacheKey);
+  if (cached) {
+    const ageMin = Math.round((Date.now() - cached.cachedAt) / 60000);
+    console.log(`[캐시 HIT] ${part_number} (${ageMin}분 전 캐시)`);
     return res.json({ status: "success", data: cached.data, cached: true });
   }
 
@@ -69,14 +108,14 @@ router.post("/parts/search", async (req, res) => {
     });
     if (!response.ok) throw new Error(`Nexar API 오류: ${response.status}`);
     const data = await response.json();
-    searchCache.set(cacheKey, { data, cachedAt: Date.now() });
+    setCached(cacheKey, data);
     return res.json({ status: "success", data, cached: false });
   } catch (error: unknown) {
     return res.status(500).json({ status: "error", message: error instanceof Error ? error.message : "알 수 없는 오류" });
   }
 });
 
-// ── 서버 사이드 Excel 생성 (ExcelJS) ──────────────────────────────
+// ── 서버 사이드 Excel 생성 ────────────────────────────────────────
 interface PriceBreak { quantity: number; price: number; }
 interface Offer {
   company: string; clickUrl: string; stock: number; moq: number;
@@ -89,7 +128,6 @@ const RED   = { argb: "FFCC0000" };
 const BLUE  = { argb: "FF4472C4" };
 const WHITE = { argb: "FFFFFFFF" };
 const LBLUE = { argb: "FFDDEEFF" };
-const GREY  = { argb: "FF999999" };
 
 function labelStyle(cell: ExcelJS.Cell) {
   cell.font = { bold: true };
@@ -104,63 +142,62 @@ function headStyle(cell: ExcelJS.Cell) {
 
 router.post("/parts/export", async (req, res) => {
   const { results } = req.body as { results?: PartResult[] };
-  if (!results || results.length === 0) return res.status(400).json({ status: "error", message: "내보낼 데이터가 없습니다." });
+  if (!results || results.length === 0)
+    return res.status(400).json({ status: "error", message: "내보낼 데이터가 없습니다." });
 
   try {
-    // 전체 결과에서 회사+패키징 조합을 수집 → 동적 컬럼 (중복 없이 순서 유지)
-    interface ColKey { company: string; packaging: string; label: string; key: string; }
-    const colList: ColKey[] = [];
-    const seenKeys = new Set<string>();
-    results.forEach(({ offers }) =>
-      offers.forEach(({ company, packaging }) => {
-        const key = `${company}||${packaging}`;
-        if (!seenKeys.has(key)) {
-          seenKeys.add(key);
-          colList.push({ company, packaging, label: `${company}\n(${packaging})`, key });
-        }
-      })
-    );
-
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet("비교견적리포트");
-    ws.columns = [
-      { width: 14 }, { width: 20 },
-      ...colList.map(() => ({ width: 26 })),
-    ];
+
+    // 고정 컬럼 1~2 너비만 설정, 나머지는 부품별로 동적 처리
+    ws.getColumn(1).width = 14;
+    ws.getColumn(2).width = 20;
 
     results.forEach(({ partName, qty, offers }) => {
-      // 회사+패키징 키로 offer 맵 구성
+      // ── 이 부품에 실제 있는 회사+패키징 조합만 컬럼 생성 ──
+      interface Col { key: string; company: string; packaging: string; }
+      const cols: Col[] = [];
+      const seen = new Set<string>();
+      offers.forEach(({ company, packaging }) => {
+        const k = `${company}||${packaging}`;
+        if (!seen.has(k)) { seen.add(k); cols.push({ key: k, company, packaging }); }
+      });
+
+      // 컬럼 너비 설정 (부품별로 덮어쓰기 — 마지막 부품 기준이 되지만 무방)
+      cols.forEach((_, i) => { ws.getColumn(i + 3).width = 24; });
+
+      // offer 맵 (company||packaging → offer)
       const offerMap = new Map<string, Offer>();
       offers.forEach((o) => {
         const k = `${o.company}||${o.packaging}`;
         if (!offerMap.has(k)) offerMap.set(k, o);
       });
 
-      const matched = colList.map((c) => offerMap.get(c.key) ?? null);
-      const maxPbLines = Math.max(1, ...matched.map((o) => (o ? o.priceBreaks.length : 1)));
+      const matched = cols.map((c) => offerMap.get(c.key)!);
+      const maxPbLines = Math.max(1, ...matched.map((o) => o.priceBreaks.length));
 
-      const r1 = ws.addRow(["품목명", partName, ...colList.map(() => "")]);
+      // 행1: 품목명
+      const r1 = ws.addRow(["품목명", partName, ...cols.map(() => "")]);
       r1.height = 18; labelStyle(r1.getCell(1)); r1.getCell(2).font = { bold: true };
 
-      const r2 = ws.addRow(["수량", qty, ...colList.map(() => "")]);
+      // 행2: 수량
+      const r2 = ws.addRow(["수량", qty, ...cols.map(() => "")]);
       r2.height = 18; labelStyle(r2.getCell(1));
 
-      // 헤더: "Digi-Key\n(Cut Tape)" 형식으로 두 줄 표현
-      const r3 = ws.addRow(["", "", ...colList.map((c) => c.label)]);
-      r3.height = 30;
-      colList.forEach((_, i) => {
-        const cell = r3.getCell(i + 3);
-        headStyle(cell);
-        cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
-      });
+      // 행3: 회사명만 (패키징은 Pkg 행에서 표시)
+      const r3 = ws.addRow(["", "", ...cols.map((c) => c.company)]);
+      r3.height = 20;
+      cols.forEach((_, i) => headStyle(r3.getCell(i + 3)));
 
-      const rowNames = ["Pkg","Stock","Min Qty","Price Breaks","Buy Qty","Total"];
+      // 데이터 행
+      const rowNames = ["Pkg", "Stock", "Min Qty", "Price Breaks", "Buy Qty", "Total"];
       const rowData: (string | number)[][] = rowNames.map(() => []);
 
       matched.forEach((offer) => {
-        if (!offer) { rowData.forEach((rd) => rd.push("-")); return; }
         const isShortage = offer.stock < qty;
-        const pbText = offer.priceBreaks.map((p) => `${p.quantity.toLocaleString()}  $${p.price.toFixed(4)}`).join("\n");
+        const pbText = offer.priceBreaks
+          .map((p) => `${p.quantity.toLocaleString()}  $${p.price.toFixed(4)}`)
+          .join("\n");
         rowData[0].push(offer.packaging);
         rowData[1].push(offer.stock.toLocaleString() + (isShortage ? " (재고부족)" : ""));
         rowData[2].push(offer.moq.toLocaleString());
@@ -176,13 +213,9 @@ router.post("/parts/export", async (req, res) => {
         labelStyle(exRow.getCell(1));
         matched.forEach((offer, mi) => {
           const cell = exRow.getCell(mi + 3);
-          if (!offer) {
-            cell.font = { color: GREY }; cell.alignment = { vertical: "top" };
-          } else {
-            const isShortage = offer.stock < qty;
-            if (isShortage) cell.font = { color: RED };
-            cell.alignment = { vertical: "top", wrapText: isPb };
-          }
+          const isShortage = offer.stock < qty;
+          if (isShortage) cell.font = { color: RED };
+          cell.alignment = { vertical: "top", wrapText: isPb };
         });
       });
 
