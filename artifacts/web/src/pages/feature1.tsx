@@ -166,60 +166,84 @@ export default function Feature1() {
 
   const downloadBatchExcel = () => {
     if (results.length === 0) return;
+
     const wsData: (string | number)[][] = [];
+    const rowHeights: { hpt: number }[] = [];
 
     results.forEach(({ partName, qty, offers }) => {
-      // 헤더 행: 품목명 | 수량 | [유통사...]
-      wsData.push(["품목명", qty, ...EXCEL_DISTRIBUTORS]);
-      wsData.push([partName, "", ...EXCEL_DISTRIBUTORS.map(() => "")]);
+      // 행1: 품목명 | 값
+      wsData.push(["품목명", partName, ...EXCEL_DISTRIBUTORS.map(() => "")]);
+      rowHeights.push({ hpt: 18 });
 
-      const rowPkg: (string | number)[]    = ["Pkg", ""];
-      const rowStock: (string | number)[]  = ["Stock", ""];
-      const rowMoq: (string | number)[]    = ["Min Qty", ""];
-      const rowPb: (string | number)[]     = ["Price Breaks", ""];
-      const rowBuy: (string | number)[]    = ["Buy Qty", ""];
-      const rowTotal: (string | number)[]  = ["Total", ""];
+      // 행2: 수량 | 값
+      wsData.push(["수량", qty, ...EXCEL_DISTRIBUTORS.map(() => "")]);
+      rowHeights.push({ hpt: 18 });
 
-      EXCEL_DISTRIBUTORS.forEach((dist) => {
-        // 유통사 이름 부분 매칭 (대소문자 무시)
-        const offer = offers.find((o) => {
-          const cn = o.company.toLowerCase();
-          const dn = dist.toLowerCase();
-          return cn.includes(dn) || dn.includes(cn) || cn.replace(/-/g, "").includes(dn.replace(/-/g, ""));
-        });
+      // 행3: 유통사 헤더
+      wsData.push(["", "", ...EXCEL_DISTRIBUTORS]);
+      rowHeights.push({ hpt: 20 });
 
-        if (offer) {
-          const isShortage = offer.stock < qty;
-          const pbText = offer.priceBreaks.map((p) => `${p.quantity.toLocaleString()}  $${p.price.toFixed(4)}`).join("\r\n");
-          rowPkg.push(offer.packaging);
-          rowStock.push(offer.stock.toLocaleString() + (isShortage ? " (재고부족)" : ""));
-          rowMoq.push(offer.moq.toLocaleString());
-          rowPb.push(pbText);
-          rowBuy.push(offer.buyQty.toLocaleString());
-          rowTotal.push(`$${offer.totalPrice.toFixed(2)}`);
-        } else {
-          rowPkg.push("-");
-          rowStock.push("-");
-          rowMoq.push("-");
-          rowPb.push("-");
-          rowBuy.push("-");
-          rowTotal.push("-");
+      // 유통사별 offer 매칭
+      const matched = EXCEL_DISTRIBUTORS.map((dist) =>
+        offers.find((o) => {
+          const cn = o.company.toLowerCase().replace(/-/g, "");
+          const dn = dist.toLowerCase().replace(/-/g, "");
+          return cn.includes(dn) || dn.includes(cn);
+        }) ?? null
+      );
+
+      // 최대 price break 줄 수 계산 (행 높이용)
+      const maxPbLines = Math.max(1, ...matched.map((o) => (o ? o.priceBreaks.length : 1)));
+
+      const rowPkg:   (string | number)[] = ["Pkg", ""];
+      const rowStock: (string | number)[] = ["Stock", ""];
+      const rowMoq:   (string | number)[] = ["Min Qty", ""];
+      const rowPb:    (string | number)[] = ["Price Breaks", ""];
+      const rowBuy:   (string | number)[] = ["Buy Qty", ""];
+      const rowTotal: (string | number)[] = ["Total", ""];
+
+      matched.forEach((offer) => {
+        if (!offer) {
+          rowPkg.push("-"); rowStock.push("-"); rowMoq.push("-");
+          rowPb.push("-"); rowBuy.push("-"); rowTotal.push("-");
+          return;
         }
+        const isShortage = offer.stock < qty;
+        // \n 포함 문자열은 SheetJS가 자동으로 wrapText 처리
+        const pbText = offer.priceBreaks.map((p) => `${p.quantity.toLocaleString()}  $${p.price.toFixed(4)}`).join("\n");
+        const stockText = offer.stock.toLocaleString() + (isShortage ? " ⚠재고부족" : "");
+
+        rowPkg.push(offer.packaging);
+        rowStock.push(stockText);
+        rowMoq.push(offer.moq.toLocaleString());
+        rowPb.push(pbText);
+        rowBuy.push(offer.buyQty.toLocaleString());
+        rowTotal.push(`$${offer.totalPrice.toFixed(2)}`);
       });
 
-      wsData.push(rowPkg, rowStock, rowMoq, rowPb, rowBuy, rowTotal);
-      wsData.push([]); // 부품 간 빈 행
+      wsData.push(rowPkg);   rowHeights.push({ hpt: 18 });
+      wsData.push(rowStock); rowHeights.push({ hpt: 18 });
+      wsData.push(rowMoq);   rowHeights.push({ hpt: 18 });
+      wsData.push(rowPb);    rowHeights.push({ hpt: Math.max(18, maxPbLines * 15) });
+      wsData.push(rowBuy);   rowHeights.push({ hpt: 18 });
+      wsData.push(rowTotal); rowHeights.push({ hpt: 18 });
+      wsData.push([]);
+      rowHeights.push({ hpt: 8 });
     });
 
     const ws = XLSX.utils.aoa_to_sheet(wsData);
-    // Price Breaks 행(rowPb)의 셀에 줄바꿈 wrap 적용
+
+    // Price Breaks 셀에 wrapText 직접 주입 (SheetJS CE)
     Object.keys(ws).forEach((addr) => {
-      if (!addr.startsWith("!") && ws[addr].v && typeof ws[addr].v === "string" && (ws[addr].v as string).includes("\r\n")) {
-        ws[addr].s = { alignment: { wrapText: true, vertical: "top" } };
+      if (addr.startsWith("!")) return;
+      const cell = ws[addr];
+      if (typeof cell.v === "string" && cell.v.includes("\n")) {
+        cell.s = { alignment: { wrapText: true, vertical: "top" } };
       }
     });
-    const colWidths = [{ wch: 15 }, { wch: 10 }, ...EXCEL_DISTRIBUTORS.map(() => ({ wch: 20 }))];
-    ws["!cols"] = colWidths;
+
+    ws["!cols"] = [{ wch: 14 }, { wch: 18 }, ...EXCEL_DISTRIBUTORS.map(() => ({ wch: 22 }))];
+    ws["!rows"] = rowHeights;
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "비교견적리포트");
     XLSX.writeFile(wb, "AtoZ_단가비교_피벗.xlsx");
