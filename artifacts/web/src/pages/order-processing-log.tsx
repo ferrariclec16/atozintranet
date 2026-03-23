@@ -168,33 +168,46 @@ export default function OrderProcessingLog() {
               <h1 className="text-xl font-bold text-gray-900">발주서 기록</h1>
               <p className="text-sm text-gray-500 mt-1">저장된 발주 정리 결과를 조회하고 다운로드할 수 있습니다.</p>
             </div>
-            {selectedIds.length > 0 && (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => selectedLog && openModal(selectedLog)}
-                  disabled={isLoadingModal || selectedIds.length !== 1}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                >
-                  {isLoadingModal ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
-                  정리 결과 보기
-                </button>
-                <button
-                  onClick={() => selectedLog && handleDownload(selectedLog)}
-                  disabled={selectedIds.length !== 1}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
-                >
-                  <Download className="w-4 h-4" />
-                  Excel 다운로드
-                </button>
-                <button
-                  onClick={handleDelete}
-                  disabled={isDeleting}
-                  className="flex items-center gap-2 px-3 py-2 border border-red-200 text-red-500 text-sm font-medium rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
-                >
-                  {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                </button>
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              {/* 정리 결과 보기: 1개만 선택 시 활성화 */}
+              <button
+                onClick={() => selectedLog && openModal(selectedLog)}
+                disabled={isLoadingModal || selectedIds.length !== 1}
+                className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
+                  selectedIds.length === 1 && !isLoadingModal
+                    ? "bg-blue-600 text-white hover:bg-blue-700"
+                    : "bg-gray-100 text-gray-300 cursor-not-allowed"
+                }`}
+              >
+                {isLoadingModal ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
+                정리 결과 보기
+              </button>
+              {/* Excel 다운로드: 1개만 선택 시 활성화 */}
+              <button
+                onClick={() => selectedLog && handleDownload(selectedLog)}
+                disabled={selectedIds.length !== 1}
+                className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
+                  selectedIds.length === 1
+                    ? "bg-green-600 text-white hover:bg-green-700"
+                    : "bg-gray-100 text-gray-300 cursor-not-allowed"
+                }`}
+              >
+                <Download className="w-4 h-4" />
+                Excel 다운로드
+              </button>
+              {/* 삭제: 1개 이상 선택 시 활성화 */}
+              <button
+                onClick={handleDelete}
+                disabled={isDeleting || selectedIds.length === 0}
+                className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                  selectedIds.length > 0 && !isDeleting
+                    ? "border-red-200 text-red-500 hover:bg-red-50"
+                    : "border-gray-200 text-gray-300 cursor-not-allowed"
+                }`}
+              >
+                {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           {error && (
