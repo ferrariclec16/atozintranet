@@ -239,11 +239,22 @@ export default function DbUpdate() {
           // ② DB 형식 자동 감지: 품명, 수량, 납품가 컬럼이 있으면
           if (rows.length === 0 && normRows.length > 0 && normRows[0]["품명"]) {
             isDbFormat = true;
+
+            // Excel float 노이즈 제거 (예: 3200.0000000001 → 3200)
+            const cleanNum = (s: string): number => {
+              const n = parseFloat(s.replace(/,/g, ""));
+              if (isNaN(n) || n === 0) return 0;
+              const rounded6 = Math.round(n * 1e6) / 1e6;
+              return rounded6;
+            };
+
             rows = normRows
               .filter((r) => r["품명"])
               .map((r) => {
-                const qty = parseFloat(r["수량"]) || 0;
-                const cost = parseFloat(r["원가"]) || 0;
+                const qty   = cleanNum(r["수량"]);
+                const price = cleanNum(r["납품가"]);
+                const total = cleanNum(r["합계"]);
+                const cost  = cleanNum(r["원가"]);
                 return {
                   company_name: companyName,
                   order_date: null,
@@ -253,8 +264,8 @@ export default function DbUpdate() {
                   order_no: null,
                   item_name: r["품명"],
                   order_qty: qty,
-                  order_price: parseFloat(r["납품가"]) || 0,
-                  delivery_amount: parseFloat(r["합계"]) || 0,
+                  order_price: price,
+                  delivery_amount: total,
                   delivery_status: null,
                   note: null,
                   purchase_price: cost || null,

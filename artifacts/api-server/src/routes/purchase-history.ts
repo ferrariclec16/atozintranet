@@ -67,13 +67,25 @@ router.post("/purchase-history/upload", requireAuth, async (req, res) => {
       if (!row.item_name) continue;
 
       if (replace) {
-        // DB 형식: 단순 INSERT (중복 걱정 없음, 위에서 전체 삭제했으므로)
+        // DB 형식: DELETE 후 INSERT, 파일 내 중복은 마지막 값으로 업데이트
         await client.query(
           `INSERT INTO purchase_history
              (company_name, order_date, due_date, order_type, item_code, order_no,
               item_name, order_qty, order_price, delivery_amount, delivery_status, note,
               purchase_price, supplier)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+           ON CONFLICT (
+             company_name,
+             COALESCE(item_code, ''),
+             COALESCE(order_no, ''),
+             COALESCE(order_qty::text, '0'),
+             COALESCE(order_price::text, '0')
+           ) DO UPDATE SET
+             item_name       = EXCLUDED.item_name,
+             delivery_amount = EXCLUDED.delivery_amount,
+             purchase_price  = EXCLUDED.purchase_price,
+             supplier        = EXCLUDED.supplier,
+             uploaded_at     = NOW()`,
           [
             row.company_name || null,
             row.order_date || null,
