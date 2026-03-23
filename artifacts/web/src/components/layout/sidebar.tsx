@@ -10,6 +10,7 @@ import {
   DatabaseZap,
   Database,
   Upload,
+  History,
 } from "lucide-react";
 
 interface NavItem {
@@ -22,6 +23,7 @@ const commonNavItems: NavItem[] = [
   { href: "/", label: "대시보드", icon: <LayoutDashboard className="w-4 h-4 flex-shrink-0" /> },
   { href: "/feature1", label: "부품 검색기", icon: <Search className="w-4 h-4 flex-shrink-0" /> },
   { href: "/feature2", label: "발주서 정리", icon: <FileText className="w-4 h-4 flex-shrink-0" /> },
+  { href: "/order-processing-log", label: "발주서 기록", icon: <History className="w-4 h-4 flex-shrink-0" /> },
   { href: "/db-update", label: "DB 업데이트", icon: <DatabaseZap className="w-4 h-4 flex-shrink-0" /> },
   { href: "/db-view", label: "DB", icon: <Database className="w-4 h-4 flex-shrink-0" /> },
 ];

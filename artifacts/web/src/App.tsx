@@ -17,6 +17,7 @@ import LicenseManage from "@/pages/admin/license-manage";
 import AccessLog from "@/pages/admin/access-log";
 import Security from "@/pages/admin/security";
 import DbUploadLog from "@/pages/admin/db-upload-log";
+import OrderProcessingLogPage from "@/pages/order-processing-log";
 
 const queryClient = new QueryClient();
 
@@ -81,6 +82,9 @@ function Router() {
       </Route>
       <Route path="/feature2">
         <ProtectedRoute component={OrderProcessing} />
+      </Route>
+      <Route path="/order-processing-log">
+        <ProtectedRoute component={OrderProcessingLogPage} />
       </Route>
       <Route path="/db-update">
         <ProtectedRoute component={DbUpdate} />

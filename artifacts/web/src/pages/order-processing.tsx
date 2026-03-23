@@ -3,7 +3,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import {
   FileText, Upload, X, ChevronDown,
   AlertCircle, Loader2, Download, CheckCircle2,
-  Search, Copy, Check,
+  Search, Copy, Check, Save,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
@@ -69,6 +69,8 @@ export default function OrderProcessing() {
   const [totalRows, setTotalRows] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedCell, setCopiedCell] = useState<string | null>(null);
+  const [isSavingResult, setIsSavingResult] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 복사 가능 컬럼
@@ -229,6 +231,36 @@ export default function OrderProcessing() {
     XLSX.writeFile(wb, `AtoZELECTRON_발주정리_${selectedCompany}_${today}.xlsx`);
   };
 
+  const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+  const handleSaveResult = async () => {
+    if (!outputRows || outputRows.length === 0 || !fileName) return;
+    setIsSavingResult(true);
+    setSaveSuccess(false);
+    try {
+      const res = await fetch(`${BASE}/api/order-processing-log`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_name: selectedCompany,
+          file_name: fileName,
+          rows: outputRows,
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error || "저장 실패");
+      }
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setIsSavingResult(false);
+    }
+  };
+
   const MASTER_COLS = ["매입가(입고가)", "마진", "재고", "매입처", "연락처", "위치"];
 
   return (
@@ -349,13 +381,32 @@ export default function OrderProcessing() {
                 </div>
 
                 {outputRows.length > 0 && (
-                  <button
-                    onClick={handleDownload}
-                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors"
-                  >
-                    <Download className="w-4 h-4" />
-                    Excel 다운로드
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleSaveResult}
+                      disabled={isSavingResult || saveSuccess}
+                      className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
+                        saveSuccess
+                          ? "bg-green-100 text-green-700 border border-green-200"
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200"
+                      } disabled:opacity-60`}
+                    >
+                      {isSavingResult
+                        ? <Loader2 className="w-4 h-4 animate-spin" />
+                        : saveSuccess
+                          ? <Check className="w-4 h-4 text-green-600" />
+                          : <Save className="w-4 h-4" />
+                      }
+                      {saveSuccess ? "저장 완료" : "결과 저장"}
+                    </button>
+                    <button
+                      onClick={handleDownload}
+                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors"
+                    >
+                      <Download className="w-4 h-4" />
+                      Excel 다운로드
+                    </button>
+                  </div>
                 )}
               </div>
 
