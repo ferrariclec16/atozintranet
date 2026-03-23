@@ -90,7 +90,7 @@ async function fetchAndAnalyze(partInput: string, targetQty: number): Promise<Of
   return Object.values(best).sort((a, b) => a.totalPrice - b.totalPrice);
 }
 
-export default function Feature1() {
+export default function PartsSearch() {
   const [results, setResults] = useState<PartResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [openIds, setOpenIds] = useState<Set<number>>(new Set());

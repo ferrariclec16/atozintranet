@@ -56,7 +56,7 @@ function excelDateToString(val: unknown): string {
   return `${y}-${m}-${d}`;
 }
 
-export default function Feature2() {
+export default function OrderProcessing() {
   const [companies, setCompanies] = useState<string[]>([]);
   const [selectedCompany, setSelectedCompany] = useState<string>("");
   const [isLoadingCompanies, setIsLoadingCompanies] = useState(true);
@@ -327,8 +327,7 @@ export default function Feature2() {
             </div>
           )}
 
-          <>
-              <div className="mb-6">
+          <div className="mb-6">
                 <h1 className="text-xl font-bold text-gray-900">발주서 정리</h1>
                 <p className="text-sm text-gray-500 mt-1">
                   발주 엑셀을 업로드하면 <strong>발주완결</strong> 항목이 자동 추출되어 원하는 양식으로 출력되고 DB에 저장됩니다.
@@ -530,7 +529,6 @@ export default function Feature2() {
                   </div>
                 </div>
               )}
-            </>
         </div>
       </main>
     </div>

@@ -1,96 +1,111 @@
-# Workspace
+# AtoZ ELECTRON 인트라넷
 
-## Overview
+## 개요
 
-pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
+AtoZ ELECTRON(에이투지 일렉트론) 사내 인트라넷 시스템. 부품 검색, 발주서 정리, DB 조회/업데이트 기능을 제공합니다.
 
-## Stack
+- **배포 도메인**: adminatoz.com (A 레코드 → 34.111.179.208)
+- **패키지 관리**: pnpm workspaces (모노레포)
+- **Node.js**: 24, TypeScript 5.9
 
-- **Monorepo tool**: pnpm workspaces
-- **Node.js version**: 24
-- **Package manager**: pnpm
-- **TypeScript version**: 5.9
-- **API framework**: Express 5
-- **Database**: PostgreSQL + Drizzle ORM
-- **Validation**: Zod (`zod/v4`), `drizzle-zod`
-- **API codegen**: Orval (from OpenAPI spec)
-- **Build**: esbuild (CJS bundle)
-
-## Structure
+## 구조
 
 ```text
-artifacts-monorepo/
-├── artifacts/              # Deployable applications
-│   └── api-server/         # Express API server
-├── lib/                    # Shared libraries
-│   ├── api-spec/           # OpenAPI spec + Orval codegen config
-│   ├── api-client-react/   # Generated React Query hooks
-│   ├── api-zod/            # Generated Zod schemas from OpenAPI
-│   └── db/                 # Drizzle ORM schema + DB connection
-├── scripts/                # Utility scripts (single workspace package)
-│   └── src/                # Individual .ts scripts, run via `pnpm --filter @workspace/scripts run <script>`
-├── pnpm-workspace.yaml     # pnpm workspace (artifacts/*, lib/*, lib/integrations/*, scripts)
-├── tsconfig.base.json      # Shared TS options (composite, bundler resolution, es2022)
-├── tsconfig.json           # Root TS project references
-└── package.json            # Root package with hoisted devDeps
+artifacts/
+├── api-server/          # Express 5 백엔드 서버
+│   └── src/
+│       ├── config/
+│       │   └── employees.ts        # 직원 목록 (세션 기반 인증)
+│       ├── routes/
+│       │   ├── auth.ts             # 로그인/로그아웃
+│       │   ├── parts.ts            # 부품 검색 (Nexar GraphQL)
+│       │   ├── purchase-history.ts # 발주 이력 CRUD (PostgreSQL)
+│       │   ├── admin.ts            # 관리자 접근 로그
+│       │   └── health.ts
+│       └── types/session.d.ts
+│
+└── web/                 # React + Vite 프론트엔드
+    └── src/
+        ├── App.tsx                  # 라우팅
+        ├── components/
+        │   └── layout/
+        │       └── sidebar.tsx      # 사이드바 네비게이션
+        └── pages/
+            ├── login.tsx            # 로그인 페이지
+            ├── dashboard.tsx        # 대시보드
+            ├── parts-search.tsx     # 부품 검색기 (feature1)
+            ├── order-processing.tsx # 발주서 정리 (feature2)
+            ├── db-view.tsx          # DB 조회
+            ├── db-update.tsx        # DB 업데이트
+            ├── not-found.tsx
+            └── admin/
+                └── access-log.tsx   # 관리자 접근 로그
 ```
 
-## TypeScript & Composite Projects
+## 라우팅 (프론트엔드)
 
-Every package extends `tsconfig.base.json` which sets `composite: true`. The root `tsconfig.json` lists all packages as project references. This means:
+| 경로 | 컴포넌트 | 설명 |
+|------|----------|------|
+| `/` | Dashboard | 대시보드 |
+| `/feature1` | PartsSearch | 부품 검색기 |
+| `/feature2` | OrderProcessing | 발주서 정리 |
+| `/db-view` | DbView | DB 조회 |
+| `/db-update` | DbUpdate | DB 업데이트 |
+| `/admin/access-log` | AccessLog | 관리자 전용 |
+| `/login` | Login | 로그인 (공개) |
 
-- **Always typecheck from the root** — run `pnpm run typecheck` (which runs `tsc --build --emitDeclarationOnly`). This builds the full dependency graph so that cross-package imports resolve correctly. Running `tsc` inside a single package will fail if its dependencies haven't been built yet.
-- **`emitDeclarationOnly`** — we only emit `.d.ts` files during typecheck; actual JS bundling is handled by esbuild/tsx/vite...etc, not `tsc`.
-- **Project references** — when package A depends on package B, A's `tsconfig.json` must list B in its `references` array. `tsc --build` uses this to determine build order and skip up-to-date packages.
+## 백엔드 API
 
-## Root Scripts
+| 엔드포인트 | 설명 |
+|-----------|------|
+| `POST /api/auth/login` | 로그인 |
+| `POST /api/auth/logout` | 로그아웃 |
+| `GET /api/auth/me` | 현재 사용자 |
+| `POST /api/parts/search` | Nexar GraphQL 부품 검색 |
+| `GET /api/purchase-history` | 발주 이력 조회 |
+| `POST /api/purchase-history` | 발주 이력 저장 |
+| `GET /api/admin/access-log` | 관리자 접근 로그 |
 
-- `pnpm run build` — runs `typecheck` first, then recursively runs `build` in all packages that define it
-- `pnpm run typecheck` — runs `tsc --build --emitDeclarationOnly` using project references
+## 외부 서비스
 
-## Packages
+- **Supabase** (`https://ifkhmtqxqlqhfbawpyoy.supabase.co`): `excel_mappings`, `master_data` 테이블
+- **Nexar GraphQL API**: 부품 검색 (CLIENT_ID/SECRET 환경변수)
+- **Replit PostgreSQL**: `purchase_history` 테이블 (DATABASE_URL)
 
-### `artifacts/api-server` (`@workspace/api-server`)
+## 인증
 
-Express 5 API server. Routes live in `src/routes/` and use `@workspace/api-zod` for request and response validation and `@workspace/db` for persistence.
+- 세션 기반 로그인 (`express-session`)
+- 직원 목록 하드코딩 (`artifacts/api-server/src/config/employees.ts`)
+- 역할: `admin` / 일반 직원
+- 로그인 레이블: "아이디"
 
-- Entry: `src/index.ts` — reads `PORT`, starts Express
-- App setup: `src/app.ts` — mounts CORS, JSON/urlencoded parsing, routes at `/api`
-- Routes: `src/routes/index.ts` mounts sub-routers; `src/routes/health.ts` exposes `GET /health` (full path: `/api/health`)
-- Depends on: `@workspace/db`, `@workspace/api-zod`
-- `pnpm --filter @workspace/api-server run dev` — run the dev server
-- `pnpm --filter @workspace/api-server run build` — production esbuild bundle (`dist/index.cjs`)
-- Build bundles an allowlist of deps (express, cors, pg, drizzle-orm, zod, etc.) and externalizes the rest
+## 빌드 & 배포
 
-### `lib/db` (`@workspace/db`)
+- 빌드 스크립트: `scripts/build-deploy.sh`
+- 프론트엔드 빌드 → `artifacts/web/dist/public/`
+- API 서버가 빌드된 정적 파일 서빙
+- `.replit` build command: `["bash", "scripts/build-deploy.sh"]`
+- GitHub 원격: `https://${GITHUB_PERSONAL_TOKEN}@github.com/ferrariclec16/atozintranet.git`
 
-Database layer using Drizzle ORM with PostgreSQL. Exports a Drizzle client instance and schema models.
+## 주요 비즈니스 로직
 
-- `src/index.ts` — creates a `Pool` + Drizzle instance, exports schema
-- `src/schema/index.ts` — barrel re-export of all models
-- `src/schema/<modelname>.ts` — table definitions with `drizzle-zod` insert schemas (no models definitions exist right now)
-- `drizzle.config.ts` — Drizzle Kit config (requires `DATABASE_URL`, automatically provided by Replit)
-- Exports: `.` (pool, db, schema), `./schema` (schema only)
+### 부품 검색기 (parts-search.tsx)
+- Excel 파일 업로드 (드래그앤드롭 또는 클릭)
+- 파트넘버 파싱 규칙: `->` 뒤 부분 사용, `abc(def)` → 두 번 검색, `,` → 마지막 세그먼트
+- 공급업체 화이트리스트 필터링
+- Nexar API로 가격 조회 후 최저가 정렬
 
-Production migrations are handled by Replit when publishing. In development, we just use `pnpm --filter @workspace/db run push`, and we fallback to `pnpm --filter @workspace/db run push-force`.
+### 발주서 정리 (order-processing.tsx)
+- 업체별 Excel 업로드 → 발주완결 항목 추출
+- Supabase `excel_mappings`로 컬럼 매핑
+- 발주 데이터 PostgreSQL 저장
+- 마진 계산: `발주수량 × (발주단가 - 원가)`
 
-### `lib/api-spec` (`@workspace/api-spec`)
+### DB 조회 (db-view.tsx)
+- 업체 선택 즉시 발주 이력 조회
+- 합계 행 포함
+- DB 형식 Excel 출력
 
-Owns the OpenAPI 3.1 spec (`openapi.yaml`) and the Orval config (`orval.config.ts`). Running codegen produces output into two sibling packages:
-
-1. `lib/api-client-react/src/generated/` — React Query hooks + fetch client
-2. `lib/api-zod/src/generated/` — Zod schemas
-
-Run codegen: `pnpm --filter @workspace/api-spec run codegen`
-
-### `lib/api-zod` (`@workspace/api-zod`)
-
-Generated Zod schemas from the OpenAPI spec (e.g. `HealthCheckResponse`). Used by `api-server` for response validation.
-
-### `lib/api-client-react` (`@workspace/api-client-react`)
-
-Generated React Query hooks and fetch client from the OpenAPI spec (e.g. `useHealthCheck`, `healthCheck`).
-
-### `scripts` (`@workspace/scripts`)
-
-Utility scripts package. Each script is a `.ts` file in `src/` with a corresponding npm script in `package.json`. Run scripts via `pnpm --filter @workspace/scripts run <script>`. Scripts can import any workspace package (e.g., `@workspace/db`) by adding it as a dependency in `scripts/package.json`.
+### DB 업데이트 (db-update.tsx)
+- `master_data` 테이블 업데이트
+- 업체 선택 드롭다운 (기본값: "— 선택 —")

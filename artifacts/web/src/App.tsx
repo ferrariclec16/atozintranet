@@ -8,8 +8,8 @@ import { FullPageLoader } from "@/components/ui/loader";
 import Dashboard from "@/pages/dashboard";
 import Login from "@/pages/login";
 import NotFound from "@/pages/not-found";
-import Feature1 from "@/pages/feature1";
-import Feature2 from "@/pages/feature2";
+import PartsSearch from "@/pages/parts-search";
+import OrderProcessing from "@/pages/order-processing";
 import DbUpdate from "@/pages/db-update";
 import DbView from "@/pages/db-view";
 import LicenseIssue from "@/pages/admin/license-issue";
@@ -76,10 +76,10 @@ function Router() {
         <ProtectedRoute component={Dashboard} />
       </Route>
       <Route path="/feature1">
-        <ProtectedRoute component={Feature1} />
+        <ProtectedRoute component={PartsSearch} />
       </Route>
       <Route path="/feature2">
-        <ProtectedRoute component={Feature2} />
+        <ProtectedRoute component={OrderProcessing} />
       </Route>
       <Route path="/db-update">
         <ProtectedRoute component={DbUpdate} />
