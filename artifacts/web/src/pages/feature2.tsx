@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { Sidebar } from "@/components/layout/sidebar";
 import {
   FileText, Upload, Search, Download, X, ChevronDown,
-  AlertCircle, Loader2, DatabaseZap, Info, TableProperties,
+  AlertCircle, Loader2, DatabaseZap, Info,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
@@ -32,24 +32,11 @@ interface MappingJson {
   itemCode: string;
   orderNo?: string;
   itemName: string;
-  orderQty: string | string[];   // 단일 컬럼 or 여러 수량 컬럼 배열
+  orderQty: string;
   orderPrice: string;
   deliveryAmount: string;
   deliveryStatus: string;
   note: string;
-}
-
-// 수량 컬럼이 여러 개면 합산, 하나면 그대로 반환
-function resolveQty(row: Record<string, string>, qty: string | string[]): number {
-  if (Array.isArray(qty)) {
-    return qty.reduce((sum, col) => sum + (parseFloat(String(row[col] || "0")) || 0), 0);
-  }
-  return parseFloat(String(row[qty] || "0")) || 0;
-}
-
-// 수량 컬럼 이름(들)을 사람이 읽기 쉬운 문자열로
-function qtyLabel(qty: string | string[]): string {
-  return Array.isArray(qty) ? qty.join(" + ") : qty;
 }
 
 interface MasterData {
@@ -192,7 +179,6 @@ export default function Feature2() {
           const itemName = row[mapping.itemName];
           const db = masterMap[itemName] || ({} as MasterData);
           const agg = aggMap[itemName];
-          const orderQty = resolveQty(row, mapping.orderQty);
           const orderPrice = parseFloat(row[mapping.orderPrice]) || 0;
           const purchasePrice = parseFloat(String(db.purchase_price)) || 0;
           const margin = orderPrice && purchasePrice ? orderPrice - purchasePrice : "";
@@ -204,7 +190,7 @@ export default function Feature2() {
             "품목코드": row[mapping.itemCode] || "",
             "발주번호": row[mapping.orderNo || ""] || "",
             "품목명": itemName || "",
-            "발주수량": orderQty || "",
+            "발주수량": row[mapping.orderQty] || "",
             "발주단가": orderPrice || "",
             "납품금액": row[mapping.deliveryAmount] || "",
             "납품여부": row[mapping.deliveryStatus] || "",
@@ -274,25 +260,15 @@ export default function Feature2() {
   };
 
   const activeCols = searchMode === "file" ? FILE_COLUMNS : DB_COLUMNS;
-  const [showSample, setShowSample] = useState(false);
 
   return (
     <div className="flex min-h-screen bg-gray-50">
       <Sidebar />
       <main className="flex-1 flex flex-col">
-        <header className="h-14 px-8 flex items-center justify-between border-b border-gray-200 bg-white">
-          <div className="flex items-center">
-            <span className="text-sm text-gray-400">메뉴</span>
-            <span className="mx-2 text-gray-300">/</span>
-            <span className="text-sm font-semibold text-gray-700">발주서 정리</span>
-          </div>
-          <button
-            onClick={() => setShowSample(true)}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-green-700 bg-white border border-green-200 rounded-xl hover:bg-green-50 hover:border-green-400 transition-all shadow-sm"
-          >
-            <TableProperties className="w-4 h-4 text-green-600" />
-            샘플 양식 보기
-          </button>
+        <header className="h-14 px-8 flex items-center border-b border-gray-200 bg-white">
+          <span className="text-sm text-gray-400">메뉴</span>
+          <span className="mx-2 text-gray-300">/</span>
+          <span className="text-sm font-semibold text-gray-700">발주서 정리</span>
         </header>
 
         <div className="flex-1 p-8 max-w-6xl w-full mx-auto">
