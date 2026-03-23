@@ -381,31 +381,42 @@ export default function OrderProcessing() {
                 </div>
 
                 {outputRows.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleSaveResult}
-                      disabled={isSavingResult || saveSuccess}
-                      className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
-                        saveSuccess
-                          ? "bg-green-100 text-green-700 border border-green-200"
-                          : "bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200"
-                      } disabled:opacity-60`}
-                    >
-                      {isSavingResult
-                        ? <Loader2 className="w-4 h-4 animate-spin" />
-                        : saveSuccess
-                          ? <Check className="w-4 h-4 text-green-600" />
-                          : <Save className="w-4 h-4" />
-                      }
-                      {saveSuccess ? "저장 완료" : "결과 저장"}
-                    </button>
-                    <button
-                      onClick={handleDownload}
-                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors"
-                    >
-                      <Download className="w-4 h-4" />
-                      Excel 다운로드
-                    </button>
+                  <div className="flex flex-col items-end gap-1.5">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleSaveResult}
+                        disabled={isSavingResult || saveSuccess}
+                        className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
+                          saveSuccess
+                            ? "bg-green-100 text-green-700 border border-green-200"
+                            : "bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200"
+                        } disabled:opacity-60`}
+                      >
+                        {isSavingResult
+                          ? <Loader2 className="w-4 h-4 animate-spin" />
+                          : saveSuccess
+                            ? <Check className="w-4 h-4 text-green-600" />
+                            : <Save className="w-4 h-4" />
+                        }
+                        {saveSuccess ? "저장 완료" : "결과 저장"}
+                      </button>
+                      <button
+                        onClick={handleDownload}
+                        className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors"
+                      >
+                        <Download className="w-4 h-4" />
+                        Excel 다운로드
+                      </button>
+                    </div>
+                    {saveSuccess ? (
+                      <p className="text-xs text-green-600 font-medium">
+                        ✓ 사이드바의 <span className="font-bold">발주서 기록</span> 탭에서 언제든지 다시 확인할 수 있습니다.
+                      </p>
+                    ) : (
+                      <p className="text-xs text-gray-400">
+                        결과 저장 후 <span className="font-medium text-gray-500">발주서 기록</span> 탭에서 다시 조회 및 다운로드할 수 있습니다.
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
