@@ -148,7 +148,7 @@ export default function DbUpdate() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ rows }),
+          body: JSON.stringify({ rows, fileName: file.name }),
         });
         if (!res.ok) {
           const text = await res.text();

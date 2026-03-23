@@ -9,6 +9,7 @@ import {
   ClipboardList,
   DatabaseZap,
   Table2,
+  Upload,
 } from "lucide-react";
 
 interface NavItem {
@@ -27,6 +28,7 @@ const commonNavItems: NavItem[] = [
 
 const adminNavItems: NavItem[] = [
   { href: "/admin/access-log", label: "접속 기록", icon: <ClipboardList className="w-4 h-4 flex-shrink-0" /> },
+  { href: "/admin/db-upload-log", label: "DB 업로드 기록", icon: <Upload className="w-4 h-4 flex-shrink-0" /> },
 ];
 
 function NavLink({ item, active }: { item: NavItem; active: boolean }) {

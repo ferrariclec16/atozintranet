@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { Pool } from "pg";
+import { employees } from "../config/employees";
 
 const router = Router();
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -7,6 +8,17 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 function requireAuth(req: any, res: any, next: any) {
   if (!req.session?.username) { res.status(401).json({ error: "로그인이 필요합니다." }); return; }
   next();
+}
+
+function requireAdmin(req: any, res: any, next: any) {
+  if (!req.session?.username) { res.status(401).json({ error: "로그인이 필요합니다." }); return; }
+  if (req.session?.role !== "admin") { res.status(403).json({ error: "관리자만 접근할 수 있습니다." }); return; }
+  next();
+}
+
+function kstNow(): string {
+  return new Date(Date.now() + 9 * 60 * 60 * 1000)
+    .toISOString().replace("T", " ").substring(0, 19);
 }
 
 // ── 이력 업로드 (POST /purchase-history/upload) ───────────────────
@@ -26,10 +38,15 @@ interface HistoryRow {
 }
 
 router.post("/purchase-history/upload", requireAuth, async (req, res) => {
-  const { rows } = req.body as { rows?: HistoryRow[] };
+  const { rows, fileName } = req.body as { rows?: HistoryRow[]; fileName?: string };
   if (!rows || rows.length === 0) {
     return res.status(400).json({ error: "업로드할 데이터가 없습니다." });
   }
+
+  const username = req.session?.username as string;
+  const employee = employees.find((e) => e.username === username);
+  const displayName = employee?.displayName || username;
+  const companyName = rows[0]?.company_name || null;
 
   const client = await pool.connect();
   try {
@@ -60,6 +77,18 @@ router.post("/purchase-history/upload", requireAuth, async (req, res) => {
       inserted++;
     }
     await client.query("COMMIT");
+
+    // 업로드 로그 기록
+    try {
+      await pool.query(
+        `INSERT INTO db_upload_log (username, display_name, company_name, file_name, rows_inserted, uploaded_at)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [username, displayName, companyName, fileName || null, inserted, kstNow()]
+      );
+    } catch (logErr) {
+      console.error("[업로드 로그 저장 실패]", logErr);
+    }
+
     return res.json({ success: true, inserted });
   } catch (e) {
     await client.query("ROLLBACK");
@@ -207,6 +236,22 @@ router.delete("/purchase-history/company/:name", requireAuth, async (req, res) =
     return res.json({ success: true, deleted: result.rowCount });
   } catch (e) {
     return res.status(500).json({ error: "삭제 중 오류가 발생했습니다." });
+  }
+});
+
+// ── DB 업로드 로그 조회 (GET /purchase-history/upload-log) — 관리자 전용 ──
+router.get("/purchase-history/upload-log", requireAdmin, async (_req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, username, display_name, company_name, file_name, rows_inserted, uploaded_at
+       FROM db_upload_log
+       ORDER BY id DESC
+       LIMIT 500`
+    );
+    return res.json({ logs: result.rows });
+  } catch (e) {
+    console.error("[업로드 로그 조회 오류]", e);
+    return res.status(500).json({ error: "로그 조회 중 오류가 발생했습니다." });
   }
 });
 
