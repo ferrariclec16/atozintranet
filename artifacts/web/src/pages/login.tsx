@@ -123,7 +123,7 @@ export default function Login() {
       </div>
 
       <p className="mt-8 text-xs text-gray-400">
-        © 2025 AtoZ ELECTRON. All rights reserved.
+        © 2026 AtoZ ELECTRON. All rights reserved.
       </p>
     </div>
   );
