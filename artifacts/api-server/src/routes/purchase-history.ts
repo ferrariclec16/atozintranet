@@ -70,34 +70,54 @@ router.post("/purchase-history/upload", requireAuth, async (req, res) => {
   }
 });
 
-// ── 품목명 검색 (GET /purchase-history/search?q=xxx) ─────────────
+// ── 품목명 검색 (GET /purchase-history/search?q=xxx&company=yyy) ──
+// company가 있으면 해당 업체 데이터만, 없으면 전체
 router.get("/purchase-history/search", requireAuth, async (req, res) => {
   const q = String(req.query.q || "").trim();
+  const company = String(req.query.company || "").trim();
   if (!q) return res.status(400).json({ error: "검색어를 입력해주세요." });
 
   try {
-    // 개별 행
-    const rows = await pool.query(
-      `SELECT * FROM purchase_history
-       WHERE item_name ILIKE $1
-       ORDER BY order_date DESC NULLS LAST`,
-      [`%${q}%`]
-    );
+    let rowSql: string;
+    let aggSql: string;
+    let params: (string | undefined)[];
 
-    // 집계
-    const agg = await pool.query(
-      `SELECT
-         item_name,
-         COUNT(*)::int                          AS order_count,
-         SUM(order_qty)::numeric                AS total_qty,
-         SUM(order_qty * order_price)::numeric  AS total_amount,
-         MAX(order_date)                        AS last_order_date,
-         array_agg(DISTINCT company_name)       AS companies
-       FROM purchase_history
-       WHERE item_name ILIKE $1
-       GROUP BY item_name`,
-      [`%${q}%`]
-    );
+    if (company) {
+      rowSql = `SELECT * FROM purchase_history
+                WHERE item_name ILIKE $1 AND company_name = $2
+                ORDER BY order_date DESC NULLS LAST`;
+      aggSql = `SELECT
+                  item_name,
+                  COUNT(*)::int                          AS order_count,
+                  SUM(order_qty)::numeric                AS total_qty,
+                  SUM(order_qty * order_price)::numeric  AS total_amount,
+                  MAX(order_date)                        AS last_order_date,
+                  array_agg(DISTINCT company_name)       AS companies
+                FROM purchase_history
+                WHERE item_name ILIKE $1 AND company_name = $2
+                GROUP BY item_name`;
+      params = [`%${q}%`, company];
+    } else {
+      rowSql = `SELECT * FROM purchase_history
+                WHERE item_name ILIKE $1
+                ORDER BY order_date DESC NULLS LAST`;
+      aggSql = `SELECT
+                  item_name,
+                  COUNT(*)::int                          AS order_count,
+                  SUM(order_qty)::numeric                AS total_qty,
+                  SUM(order_qty * order_price)::numeric  AS total_amount,
+                  MAX(order_date)                        AS last_order_date,
+                  array_agg(DISTINCT company_name)       AS companies
+                FROM purchase_history
+                WHERE item_name ILIKE $1
+                GROUP BY item_name`;
+      params = [`%${q}%`];
+    }
+
+    const [rows, agg] = await Promise.all([
+      pool.query(rowSql, params),
+      pool.query(aggSql, params),
+    ]);
 
     return res.json({ rows: rows.rows, aggregates: agg.rows });
   } catch (e) {
@@ -106,7 +126,72 @@ router.get("/purchase-history/search", requireAuth, async (req, res) => {
   }
 });
 
-// ── 이력 전체 삭제 (DELETE /purchase-history/all) — 관리자 전용 ──
+// ── 업체별 통계 (GET /purchase-history/stats) ────────────────────
+// company가 있으면 해당 업체 상세, 없으면 전체 업체 목록 통계
+router.get("/purchase-history/stats", requireAuth, async (req, res) => {
+  const company = String(req.query.company || "").trim();
+  try {
+    if (company) {
+      // 특정 업체: 발주일자 기준 월별 집계
+      const result = await pool.query(
+        `SELECT
+           company_name,
+           COUNT(*)::int          AS total_rows,
+           COUNT(DISTINCT item_name)::int AS unique_items,
+           SUM(order_qty)::numeric        AS total_qty,
+           SUM(order_qty * order_price)::numeric AS total_amount,
+           MIN(order_date)               AS first_date,
+           MAX(order_date)               AS last_date,
+           MAX(uploaded_at)              AS last_uploaded_at
+         FROM purchase_history
+         WHERE company_name = $1
+         GROUP BY company_name`,
+        [company]
+      );
+      return res.json({ stats: result.rows[0] || null });
+    } else {
+      // 전체 업체 목록 + 각 업체 통계
+      const result = await pool.query(
+        `SELECT
+           company_name,
+           COUNT(*)::int          AS total_rows,
+           COUNT(DISTINCT item_name)::int AS unique_items,
+           SUM(order_qty)::numeric        AS total_qty,
+           SUM(order_qty * order_price)::numeric AS total_amount,
+           MIN(order_date)               AS first_date,
+           MAX(order_date)               AS last_date,
+           MAX(uploaded_at)              AS last_uploaded_at
+         FROM purchase_history
+         WHERE company_name IS NOT NULL
+         GROUP BY company_name
+         ORDER BY company_name`
+      );
+      return res.json({ stats: result.rows });
+    }
+  } catch (e) {
+    console.error("[통계 조회 오류]", e);
+    return res.status(500).json({ error: "통계 조회 중 오류가 발생했습니다." });
+  }
+});
+
+// ── 업체별 이력 삭제 (DELETE /purchase-history/company/:name) ─────
+router.delete("/purchase-history/company/:name", requireAuth, async (req, res) => {
+  if (req.session?.role !== "admin") {
+    return res.status(403).json({ error: "관리자만 삭제할 수 있습니다." });
+  }
+  const name = req.params.name;
+  try {
+    const result = await pool.query(
+      "DELETE FROM purchase_history WHERE company_name = $1",
+      [name]
+    );
+    return res.json({ success: true, deleted: result.rowCount });
+  } catch (e) {
+    return res.status(500).json({ error: "삭제 중 오류가 발생했습니다." });
+  }
+});
+
+// ── 전체 삭제 (DELETE /purchase-history/all) — 관리자 전용 ────────
 router.delete("/purchase-history/all", requireAuth, async (req, res) => {
   if (req.session?.role !== "admin") {
     return res.status(403).json({ error: "관리자만 전체 삭제할 수 있습니다." });

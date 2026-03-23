@@ -120,12 +120,11 @@ export default function Feature2() {
     [readExcel]
   );
 
-  // ── DB 이력 집계 조회 헬퍼 ─────────────────────────────────────
-  const fetchDbAggregates = async (query: string): Promise<DbAggregate[]> => {
-    const res = await fetch(
-      `/api/purchase-history/search?q=${encodeURIComponent(query)}`,
-      { credentials: "include" }
-    );
+  // ── DB 이력 집계 조회 헬퍼 (업체 지정 가능) ──────────────────────
+  const fetchDbAggregates = async (query: string, company?: string): Promise<DbAggregate[]> => {
+    const params = new URLSearchParams({ q: query });
+    if (company) params.set("company", company);
+    const res = await fetch(`/api/purchase-history/search?${params}`, { credentials: "include" });
     if (!res.ok) return [];
     const json = await res.json();
     return json.aggregates as DbAggregate[];
@@ -171,8 +170,8 @@ export default function Feature2() {
           masterMap[item.item_name] = item;
         });
 
-        // DB 이력 집계 조회
-        const dbAggregates = await fetchDbAggregates(query);
+        // DB 이력 집계 조회 — 선택된 업체 기준
+        const dbAggregates = await fetchDbAggregates(query, selectedCompany);
         const aggMap: Record<string, DbAggregate> = {};
         dbAggregates.forEach((a) => { aggMap[a.item_name] = a; });
 
@@ -212,8 +211,8 @@ export default function Feature2() {
         setSearchMode("file");
         setResults(finalData);
       } else {
-        // ── 파일 없음: DB 이력만 검색 ────────────────────────────
-        const dbAggregates = await fetchDbAggregates(query);
+        // ── 파일 없음: DB 이력만 검색 (선택된 업체 기준) ────────────
+        const dbAggregates = await fetchDbAggregates(query, selectedCompany || undefined);
 
         if (dbAggregates.length === 0) {
           setResults([]);

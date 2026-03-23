@@ -3,9 +3,11 @@ import { Sidebar } from "@/components/layout/sidebar";
 import {
   Upload, FileText, X, ChevronDown, AlertCircle,
   Loader2, CheckCircle2, DatabaseZap, Trash2, Info,
+  RefreshCw, BarChart3, Package, Calendar, Hash,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
+import { useAuth } from "@/hooks/use-auth";
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -33,7 +35,21 @@ interface UploadResult {
   message?: string;
 }
 
+interface CompanyStat {
+  company_name: string;
+  total_rows: number;
+  unique_items: number;
+  total_qty: number;
+  total_amount: number;
+  first_date: string;
+  last_date: string;
+  last_uploaded_at: string;
+}
+
 export default function DbUpdate() {
+  const { data: authData } = useAuth();
+  const isAdmin = authData?.user?.role === "admin";
+
   const [companies, setCompanies] = useState<string[]>([]);
   const [selectedCompany, setSelectedCompany] = useState("");
   const [isLoadingCompanies, setIsLoadingCompanies] = useState(true);
@@ -42,17 +58,38 @@ export default function DbUpdate() {
   const [error, setError] = useState("");
   const [uploadResults, setUploadResults] = useState<UploadResult[]>([]);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+
+  // 업체별 DB 통계
+  const [companyStats, setCompanyStats] = useState<CompanyStat[]>([]);
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
+  const [deletingCompany, setDeletingCompany] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const loadCompanies = async () => {
+    setIsLoadingCompanies(true);
+    const { data } = await supabase.from("excel_mappings").select("company_name");
+    const names = (data || []).map((d: { company_name: string }) => d.company_name);
+    setCompanies(names);
+    if (names.length > 0) setSelectedCompany(names[0]);
+    setIsLoadingCompanies(false);
+  };
+
+  const loadStats = async () => {
+    setIsLoadingStats(true);
+    try {
+      const res = await fetch("/api/purchase-history/stats", { credentials: "include" });
+      if (res.ok) {
+        const json = await res.json();
+        setCompanyStats(json.stats || []);
+      }
+    } catch { /* silent */ }
+    setIsLoadingStats(false);
+  };
+
   useEffect(() => {
-    (async () => {
-      setIsLoadingCompanies(true);
-      const { data } = await supabase.from("excel_mappings").select("company_name");
-      const names = (data || []).map((d: { company_name: string }) => d.company_name);
-      setCompanies(names);
-      if (names.length > 0) setSelectedCompany(names[0]);
-      setIsLoadingCompanies(false);
-    })();
+    loadCompanies();
+    loadStats();
   }, []);
 
   const addFiles = useCallback((files: FileList | null) => {
@@ -99,7 +136,6 @@ export default function DbUpdate() {
       return;
     }
     const mapping: MappingJson = mappingData.mapping_json;
-
     const results: UploadResult[] = [];
 
     for (const file of pendingFiles) {
@@ -109,7 +145,6 @@ export default function DbUpdate() {
           results.push({ fileName: file.name, inserted: 0, status: "error", message: "품목명이 없는 행만 있습니다." });
           continue;
         }
-
         const res = await fetch("/api/purchase-history/upload", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -117,13 +152,12 @@ export default function DbUpdate() {
           body: JSON.stringify({ rows }),
         });
         const json = await res.json();
-
         if (!res.ok) {
           results.push({ fileName: file.name, inserted: 0, status: "error", message: json.error || "서버 오류" });
         } else {
           results.push({ fileName: file.name, inserted: json.inserted, status: "success" });
         }
-      } catch (e) {
+      } catch {
         results.push({ fileName: file.name, inserted: 0, status: "error", message: "파일 파싱 오류" });
       }
     }
@@ -131,6 +165,27 @@ export default function DbUpdate() {
     setUploadResults(results);
     setPendingFiles([]);
     setIsUploading(false);
+    await loadStats(); // 통계 새로고침
+  };
+
+  const handleDeleteCompany = async (company: string) => {
+    if (!window.confirm(`"${company}" 업체의 모든 발주 이력을 삭제하시겠습니까?`)) return;
+    setDeletingCompany(company);
+    try {
+      const res = await fetch(
+        `/api/purchase-history/company/${encodeURIComponent(company)}`,
+        { method: "DELETE", credentials: "include" }
+      );
+      if (res.ok) {
+        await loadStats();
+      } else {
+        const json = await res.json();
+        setError(json.error || "삭제 중 오류가 발생했습니다.");
+      }
+    } catch {
+      setError("삭제 요청 중 오류가 발생했습니다.");
+    }
+    setDeletingCompany(null);
   };
 
   const parseExcel = (
@@ -146,7 +201,6 @@ export default function DbUpdate() {
           const workbook = XLSX.read(data, { type: "array" });
           const worksheet = workbook.Sheets[workbook.SheetNames[0]];
           const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: "" }) as Record<string, string>[];
-
           const rows = rawRows
             .filter((r) => r[mapping.itemName])
             .map((r) => ({
@@ -163,11 +217,8 @@ export default function DbUpdate() {
               delivery_status: r[mapping.deliveryStatus] || null,
               note: r[mapping.note] || null,
             }));
-
           resolve(rows);
-        } catch (err) {
-          reject(err);
-        }
+        } catch (err) { reject(err); }
       };
       reader.onerror = reject;
       reader.readAsArrayBuffer(file);
@@ -176,6 +227,15 @@ export default function DbUpdate() {
 
   const totalInserted = uploadResults.reduce((s, r) => s + r.inserted, 0);
   const successCount = uploadResults.filter((r) => r.status === "success").length;
+
+  const fmtNum = (n: number | string | null | undefined) => {
+    if (n === null || n === undefined || n === "") return "-";
+    return Number(n).toLocaleString();
+  };
+  const fmtDate = (d: string | null | undefined) => {
+    if (!d) return "-";
+    return String(d).slice(0, 10);
+  };
 
   return (
     <div className="flex min-h-screen bg-gray-50">
@@ -187,28 +247,27 @@ export default function DbUpdate() {
           <span className="text-sm font-semibold text-gray-700">DB 업데이트</span>
         </header>
 
-        <div className="flex-1 p-8 max-w-4xl w-full mx-auto">
+        <div className="flex-1 p-8 max-w-5xl w-full mx-auto">
           <div className="mb-6">
             <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
               <DatabaseZap className="w-5 h-5 text-blue-600" />
               발주 이력 DB 업로드
             </h1>
             <p className="text-sm text-gray-500 mt-1">
-              과거 발주서 엑셀 파일을 업로드하면 업체별 매핑 규칙으로 변환하여 DB에 저장됩니다.
-              저장된 데이터는 <strong>발주서 정리</strong> 페이지의 품목명 검색에서 이력 조회에 활용됩니다.
+              업체별로 과거 발주서 엑셀 파일을 업로드합니다.
+              각 업체의 매핑 규칙(Supabase excel_mappings)이 자동 적용되어 DB에 저장됩니다.
             </p>
           </div>
 
-          {/* 안내 박스 */}
+          {/* 안내 */}
           <div className="flex items-start gap-2 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg mb-6 text-sm text-blue-700">
             <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <span>
-              업체를 선택하면 해당 업체의 엑셀 컬럼 매핑이 자동 적용됩니다.
-              여러 파일을 동시에 업로드할 수 있으며, 중복 데이터는 별도 처리 없이 추가됩니다.
+              업체마다 엑셀 컬럼 구조가 다를 수 있으므로 반드시 <strong>업체를 먼저 선택</strong>하고 해당 업체의 발주서 파일을 업로드하세요.
+              다른 업체의 파일을 함께 올리면 컬럼 매핑이 맞지 않아 데이터가 잘못 저장될 수 있습니다.
             </span>
           </div>
 
-          {/* 오류 */}
           {error && (
             <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-lg mb-4 text-sm text-red-700">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -216,39 +275,142 @@ export default function DbUpdate() {
             </div>
           )}
 
-          {/* Step 1: 업체 선택 */}
+          {/* ── 업체별 DB 현황 ─────────────────────────────────────── */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-blue-600" />
+                <span className="font-semibold text-gray-800">업체별 DB 현황</span>
+              </div>
+              <button
+                onClick={loadStats}
+                disabled={isLoadingStats}
+                className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 transition-colors"
+              >
+                <RefreshCw className={`w-3 h-3 ${isLoadingStats ? "animate-spin" : ""}`} />
+                새로고침
+              </button>
+            </div>
+
+            {isLoadingStats ? (
+              <div className="flex items-center gap-2 text-sm text-gray-400 py-4">
+                <Loader2 className="w-4 h-4 animate-spin" /> 통계 불러오는 중...
+              </div>
+            ) : companyStats.length === 0 ? (
+              <div className="text-center py-8 text-sm text-gray-400">
+                <DatabaseZap className="w-8 h-8 mx-auto mb-2 text-gray-200" />
+                아직 업로드된 이력 데이터가 없습니다.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500">업체명</th>
+                      <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500">발주 건수</th>
+                      <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500">품목 종류</th>
+                      <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500">총 발주수량</th>
+                      <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500">총 발주금액</th>
+                      <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500">기간</th>
+                      <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500">최근 업로드</th>
+                      {isAdmin && <th className="py-2 px-3"></th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {companyStats.map((stat) => (
+                      <tr key={stat.company_name} className="hover:bg-gray-50 transition-colors">
+                        <td className="py-2.5 px-3 font-medium text-gray-900">{stat.company_name}</td>
+                        <td className="py-2.5 px-3 text-right text-gray-700">
+                          <span className="inline-flex items-center gap-1">
+                            <Hash className="w-3 h-3 text-gray-400" />
+                            {fmtNum(stat.total_rows)}건
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-gray-700">
+                          <span className="inline-flex items-center gap-1">
+                            <Package className="w-3 h-3 text-gray-400" />
+                            {fmtNum(stat.unique_items)}종
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-gray-700">{fmtNum(stat.total_qty)}</td>
+                        <td className="py-2.5 px-3 text-right text-blue-700 font-medium">
+                          ₩{fmtNum(stat.total_amount)}
+                        </td>
+                        <td className="py-2.5 px-3 text-center text-gray-500 text-xs">
+                          <span className="flex items-center justify-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {fmtDate(stat.first_date)} ~ {fmtDate(stat.last_date)}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-center text-gray-400 text-xs">
+                          {fmtDate(stat.last_uploaded_at)}
+                        </td>
+                        {isAdmin && (
+                          <td className="py-2.5 px-3 text-center">
+                            <button
+                              onClick={() => handleDeleteCompany(stat.company_name)}
+                              disabled={deletingCompany === stat.company_name}
+                              className="p-1.5 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
+                              title={`"${stat.company_name}" 이력 삭제`}
+                            >
+                              {deletingCompany === stat.company_name
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                : <Trash2 className="w-3.5 h-3.5" />}
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* ── 업체 선택 ───────────────────────────────────────────── */}
           <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4 shadow-sm">
             <div className="flex items-center gap-2 mb-4">
               <span className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">1</span>
-              <span className="font-semibold text-gray-800">업체 선택</span>
+              <span className="font-semibold text-gray-800">업로드할 업체 선택</span>
             </div>
             {isLoadingCompanies ? (
               <div className="flex items-center gap-2 text-sm text-gray-400">
                 <Loader2 className="w-4 h-4 animate-spin" /> 업체 목록 불러오는 중...
               </div>
             ) : (
-              <div className="relative inline-block">
-                <select
-                  value={selectedCompany}
-                  onChange={(e) => setSelectedCompany(e.target.value)}
-                  className="appearance-none bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 pr-10 text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer min-w-[200px]"
-                >
-                  {companies.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-                <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
+              <>
+                <div className="relative inline-block">
+                  <select
+                    value={selectedCompany}
+                    onChange={(e) => { setSelectedCompany(e.target.value); setUploadResults([]); }}
+                    className="appearance-none bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 pr-10 text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer min-w-[200px]"
+                  >
+                    {companies.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+                {selectedCompany && companyStats.find((s) => s.company_name === selectedCompany) && (
+                  <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 rounded-lg text-xs text-blue-700">
+                    <BarChart3 className="w-3.5 h-3.5" />
+                    현재 DB: {fmtNum(companyStats.find((s) => s.company_name === selectedCompany)?.total_rows)}건 저장됨
+                  </div>
+                )}
+              </>
             )}
           </div>
 
-          {/* Step 2: 파일 업로드 */}
+          {/* ── 파일 업로드 ─────────────────────────────────────────── */}
           <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4 shadow-sm">
-            <div className="flex items-center gap-2 mb-4">
+            <div className="flex items-center gap-2 mb-1">
               <span className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">2</span>
-              <span className="font-semibold text-gray-800">발주서 파일 선택</span>
-              <span className="text-xs text-gray-400 ml-1">(여러 파일 동시 가능)</span>
+              <span className="font-semibold text-gray-800">"{selectedCompany}" 발주서 파일 선택</span>
+              <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full ml-1">여러 파일 동시 가능</span>
             </div>
+            <p className="text-xs text-red-500 mb-4 ml-8">
+              ※ 선택한 업체("{selectedCompany}")의 매핑 규칙이 적용됩니다. 다른 업체 파일은 올리지 마세요.
+            </p>
 
             <div
               onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
@@ -273,7 +435,6 @@ export default function DbUpdate() {
               />
             </div>
 
-            {/* 선택된 파일 목록 */}
             {pendingFiles.length > 0 && (
               <div className="mt-3 space-y-2">
                 {pendingFiles.map((f, i) => (
@@ -302,12 +463,12 @@ export default function DbUpdate() {
             {isUploading ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                DB에 저장 중...
+                "{selectedCompany}" 이력 저장 중...
               </>
             ) : (
               <>
                 <DatabaseZap className="w-4 h-4" />
-                DB에 저장하기 ({pendingFiles.length}개 파일)
+                "{selectedCompany}" DB에 저장하기 ({pendingFiles.length}개 파일)
               </>
             )}
           </button>
@@ -319,7 +480,7 @@ export default function DbUpdate() {
                 <CheckCircle2 className="w-5 h-5 text-green-500" />
                 <span className="font-semibold text-gray-800">업로드 완료</span>
                 <span className="text-sm text-gray-500">
-                  — 총 <strong className="text-blue-600">{totalInserted}건</strong> 저장됨
+                  — 총 <strong className="text-blue-600">{totalInserted.toLocaleString()}건</strong> 저장됨
                   ({successCount}/{uploadResults.length}개 파일 성공)
                 </span>
               </div>
@@ -333,14 +494,12 @@ export default function DbUpdate() {
                         : "bg-red-50 border-red-200 text-red-800"
                     }`}
                   >
-                    {r.status === "success" ? (
-                      <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-green-500" />
-                    ) : (
-                      <AlertCircle className="w-4 h-4 flex-shrink-0 text-red-500" />
-                    )}
+                    {r.status === "success"
+                      ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-green-500" />
+                      : <AlertCircle className="w-4 h-4 flex-shrink-0 text-red-500" />}
                     <span className="flex-1 truncate font-medium">{r.fileName}</span>
                     <span className="text-xs">
-                      {r.status === "success" ? `${r.inserted}건 저장` : r.message || "오류"}
+                      {r.status === "success" ? `${r.inserted.toLocaleString()}건 저장` : r.message || "오류"}
                     </span>
                   </div>
                 ))}
