@@ -204,23 +204,56 @@ export default function DbUpdate() {
           const data = new Uint8Array(e.target!.result as ArrayBuffer);
           const workbook = XLSX.read(data, { type: "array" });
           const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-          const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: "" }) as Record<string, string>[];
-          const rows = rawRows
-            .filter((r) => r[mapping.itemName])
+          const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: "" }) as Record<string, unknown>[];
+
+          // 컬럼명 공백 제거 후 정규화
+          const normalize = (rows: Record<string, unknown>[]) =>
+            rows.map((r) => {
+              const n: Record<string, string> = {};
+              Object.entries(r).forEach(([k, v]) => { n[k.trim()] = String(v ?? ""); });
+              return n;
+            });
+
+          const normRows = normalize(rawRows);
+
+          // ① 발주서 형식: Supabase 매핑 사용
+          let rows = normRows
+            .filter((r) => r[mapping.itemName.trim()])
             .map((r) => ({
               company_name: companyName,
-              order_date: r[mapping.orderDate] || null,
-              due_date: r[mapping.dueDate] || null,
-              order_type: r[mapping.orderType] || null,
-              item_code: r[mapping.itemCode] || null,
-              order_no: r[mapping.orderNo || ""] || null,
-              item_name: String(r[mapping.itemName]),
-              order_qty: parseFloat(String(r[mapping.orderQty])) || 0,
-              order_price: parseFloat(String(r[mapping.orderPrice])) || 0,
-              delivery_amount: parseFloat(String(r[mapping.deliveryAmount])) || 0,
-              delivery_status: r[mapping.deliveryStatus] || null,
-              note: r[mapping.note] || null,
+              order_date: r[mapping.orderDate.trim()] || null,
+              due_date: r[mapping.dueDate.trim()] || null,
+              order_type: r[mapping.orderType.trim()] || null,
+              item_code: r[mapping.itemCode.trim()] || null,
+              order_no: r[(mapping.orderNo || "").trim()] || null,
+              item_name: r[mapping.itemName.trim()],
+              order_qty: parseFloat(r[mapping.orderQty.trim()]) || 0,
+              order_price: parseFloat(r[mapping.orderPrice.trim()]) || 0,
+              delivery_amount: parseFloat(r[mapping.deliveryAmount.trim()]) || 0,
+              delivery_status: r[mapping.deliveryStatus.trim()] || null,
+              note: r[mapping.note.trim()] || null,
             }));
+
+          // ② DB 형식 자동 감지: 품명, 수량, 납품가 컬럼이 있으면
+          if (rows.length === 0 && normRows.length > 0 && normRows[0]["품명"]) {
+            rows = normRows
+              .filter((r) => r["품명"])
+              .map((r) => ({
+                company_name: companyName,
+                order_date: null,
+                due_date: null,
+                order_type: null,
+                item_code: r["품목코드"] || null,
+                order_no: null,
+                item_name: r["품명"],
+                order_qty: parseFloat(r["수량"]) || 0,
+                order_price: parseFloat(r["납품가"]) || 0,
+                delivery_amount: parseFloat(r["합계"]) || 0,
+                delivery_status: null,
+                note: null,
+              }));
+          }
+
           resolve(rows);
         } catch (err) { reject(err); }
       };
@@ -258,8 +291,8 @@ export default function DbUpdate() {
               발주 이력 DB 업로드
             </h1>
             <p className="text-sm text-gray-500 mt-1">
-              업체별로 과거 발주서 엑셀 파일을 업로드합니다.
-              각 업체의 매핑 규칙(Supabase excel_mappings)이 자동 적용되어 DB에 저장됩니다.
+              업체별 DB 엑셀 파일을 업로드합니다.
+              발주서 형식과 DB 형식 모두 자동으로 인식합니다.
             </p>
           </div>
 
@@ -267,8 +300,8 @@ export default function DbUpdate() {
           <div className="flex items-start gap-2 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg mb-6 text-sm text-blue-700">
             <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <span>
-              업체마다 엑셀 컬럼 구조가 다를 수 있으므로 반드시 <strong>업체를 먼저 선택</strong>하고 해당 업체의 발주서 파일을 업로드하세요.
-              다른 업체의 파일을 함께 올리면 컬럼 매핑이 맞지 않아 데이터가 잘못 저장될 수 있습니다.
+              반드시 <strong>업체를 먼저 선택</strong>한 후 해당 업체의 DB 파일을 업로드하세요.
+              발주서 형식(매핑 적용)과 DB 형식(품목코드·품명·수량·납품가·합계)을 자동으로 인식합니다.
             </span>
           </div>
 
@@ -410,11 +443,11 @@ export default function DbUpdate() {
           <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4 shadow-sm">
             <div className="flex items-center gap-2 mb-1">
               <span className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">2</span>
-              <span className="font-semibold text-gray-800">"{selectedCompany}" 발주서 파일 선택</span>
+              <span className="font-semibold text-gray-800">"{selectedCompany}" DB 파일 선택</span>
               <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full ml-1">여러 파일 동시 가능</span>
             </div>
             <p className="text-xs text-red-500 mb-4 ml-8">
-              ※ 선택한 업체("{selectedCompany}")의 매핑 규칙이 적용됩니다. 다른 업체 파일은 올리지 마세요.
+              ※ 선택한 업체("{selectedCompany}")의 파일만 올려주세요. 다른 업체 파일은 잘못 저장될 수 있습니다.
             </p>
 
             <div
@@ -427,7 +460,7 @@ export default function DbUpdate() {
               }`}
             >
               <Upload className={`w-9 h-9 mx-auto mb-3 ${isDragging ? "text-blue-500" : "text-gray-300"}`} />
-              <p className="text-sm font-medium text-gray-600">발주서 엑셀 파일을 이곳에 드래그 앤 드롭</p>
+              <p className="text-sm font-medium text-gray-600">DB 엑셀 파일을 이곳에 드래그 앤 드롭</p>
               <p className="text-xs text-gray-400 mt-1">또는 클릭하여 파일 선택</p>
               <p className="text-xs text-gray-300 mt-3">.xlsx · .xls · .csv 지원</p>
               <input
