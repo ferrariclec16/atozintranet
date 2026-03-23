@@ -162,20 +162,67 @@ export default function Feature1() {
     reader.readAsArrayBuffer(file);
   }, []);
 
+  const EXCEL_DISTRIBUTORS = ["Digi-Key", "Mouser", "Arrow", "Farnell", "Element14", "TTI", "Verical", "Future", "Chip One Stop", "TI"];
+
   const downloadBatchExcel = () => {
     if (results.length === 0) return;
-    const wsData: (string | number)[][] = [["부품명", "수량", "순위", "유통사", "패키징", "재고", "MOQ", "구매수량", "단가($)", "총액($)", "URL"]];
+    const wsData: (string | number)[][] = [];
+
     results.forEach(({ partName, qty, offers }) => {
-      offers.forEach((offer, idx) => {
-        wsData.push([partName, qty, idx + 1, offer.company, offer.packaging, offer.stock, offer.moq, offer.buyQty, offer.unitPrice, offer.totalPrice, offer.clickUrl]);
+      // 헤더 행: 품목명 | 수량 | [유통사...]
+      wsData.push(["품목명", qty, ...EXCEL_DISTRIBUTORS]);
+      wsData.push([partName, "", ...EXCEL_DISTRIBUTORS.map(() => "")]);
+
+      const rowPkg: (string | number)[]    = ["Pkg", ""];
+      const rowStock: (string | number)[]  = ["Stock", ""];
+      const rowMoq: (string | number)[]    = ["Min Qty", ""];
+      const rowPb: (string | number)[]     = ["Price Breaks", ""];
+      const rowBuy: (string | number)[]    = ["Buy Qty", ""];
+      const rowTotal: (string | number)[]  = ["Total", ""];
+
+      EXCEL_DISTRIBUTORS.forEach((dist) => {
+        // 유통사 이름 부분 매칭 (대소문자 무시)
+        const offer = offers.find((o) => {
+          const cn = o.company.toLowerCase();
+          const dn = dist.toLowerCase();
+          return cn.includes(dn) || dn.includes(cn) || cn.replace(/-/g, "").includes(dn.replace(/-/g, ""));
+        });
+
+        if (offer) {
+          const isShortage = offer.stock < qty;
+          const pbText = offer.priceBreaks.map((p) => `${p.quantity.toLocaleString()}  $${p.price.toFixed(4)}`).join("\r\n");
+          rowPkg.push(offer.packaging);
+          rowStock.push(offer.stock.toLocaleString() + (isShortage ? " (재고부족)" : ""));
+          rowMoq.push(offer.moq.toLocaleString());
+          rowPb.push(pbText);
+          rowBuy.push(offer.buyQty.toLocaleString());
+          rowTotal.push(`$${offer.totalPrice.toFixed(2)}`);
+        } else {
+          rowPkg.push("-");
+          rowStock.push("-");
+          rowMoq.push("-");
+          rowPb.push("-");
+          rowBuy.push("-");
+          rowTotal.push("-");
+        }
       });
-      if (offers.length === 0) wsData.push([partName, qty, "-", "결과 없음", "", "", "", "", "", "", ""]);
+
+      wsData.push(rowPkg, rowStock, rowMoq, rowPb, rowBuy, rowTotal);
+      wsData.push([]); // 부품 간 빈 행
     });
+
     const ws = XLSX.utils.aoa_to_sheet(wsData);
-    ws["!cols"] = [25, 8, 5, 18, 10, 10, 10, 10, 10, 10, 40].map((w) => ({ wch: w }));
+    // Price Breaks 행(rowPb)의 셀에 줄바꿈 wrap 적용
+    Object.keys(ws).forEach((addr) => {
+      if (!addr.startsWith("!") && ws[addr].v && typeof ws[addr].v === "string" && (ws[addr].v as string).includes("\r\n")) {
+        ws[addr].s = { alignment: { wrapText: true, vertical: "top" } };
+      }
+    });
+    const colWidths = [{ wch: 15 }, { wch: 10 }, ...EXCEL_DISTRIBUTORS.map(() => ({ wch: 20 }))];
+    ws["!cols"] = colWidths;
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "검색결과");
-    XLSX.writeFile(wb, "AtoZ_부품검색_결과.xlsx");
+    XLSX.utils.book_append_sheet(wb, ws, "비교견적리포트");
+    XLSX.writeFile(wb, "AtoZ_단가비교_피벗.xlsx");
   };
 
   const downloadCreatedExcel = () => {
