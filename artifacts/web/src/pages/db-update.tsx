@@ -63,6 +63,7 @@ export default function DbUpdate() {
   const [companyStats, setCompanyStats] = useState<CompanyStat[]>([]);
   const [isLoadingStats, setIsLoadingStats] = useState(false);
   const [deletingCompany, setDeletingCompany] = useState<string | null>(null);
+  const [confirmDeleteTarget, setConfirmDeleteTarget] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -172,8 +173,8 @@ export default function DbUpdate() {
     await loadStats(); // 통계 새로고침
   };
 
-  const handleDeleteCompany = async (company: string) => {
-    if (!window.confirm(`"${company}" 업체의 모든 발주 이력을 삭제하시겠습니까?`)) return;
+  const doDeleteCompany = async (company: string) => {
+    setConfirmDeleteTarget(null);
     setDeletingCompany(company);
     try {
       const res = await fetch(
@@ -407,7 +408,7 @@ export default function DbUpdate() {
                         {isAdmin && (
                           <td className="py-2.5 px-3 text-center">
                             <button
-                              onClick={() => handleDeleteCompany(stat.company_name)}
+                              onClick={() => setConfirmDeleteTarget(stat.company_name)}
                               disabled={deletingCompany === stat.company_name}
                               className="p-1.5 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
                               title={`"${stat.company_name}" 이력 삭제`}
@@ -568,6 +569,40 @@ export default function DbUpdate() {
           )}
         </div>
       </main>
+
+      {/* 삭제 확인 모달 */}
+      {confirmDeleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <Trash2 className="w-4 h-4 text-red-600" />
+              </div>
+              <h3 className="text-base font-semibold text-gray-900">데이터 삭제</h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-1">
+              아래 업체의 모든 발주 이력이 삭제됩니다.
+            </p>
+            <p className="text-sm font-semibold text-gray-900 mb-5">
+              "{confirmDeleteTarget}"
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setConfirmDeleteTarget(null)}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={() => doDeleteCompany(confirmDeleteTarget)}
+                className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 transition-colors"
+              >
+                삭제
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
