@@ -1,0 +1,90 @@
+import os
+import sys
+import time
+import webbrowser
+import threading
+import requests
+from flask import Flask, request, jsonify, render_template
+
+if getattr(sys, 'frozen', False):
+    template_folder = os.path.join(sys._MEIPASS, 'templates')
+    static_folder = os.path.join(sys._MEIPASS, 'static')
+else:
+    template_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates')
+    static_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
+
+app = Flask(__name__, template_folder=template_folder, static_folder=static_folder)
+
+NEXAR_CLIENT_ID = "c7961d13-23b1-4bab-a309-6f9edb4b920f"
+NEXAR_CLIENT_SECRET = "bdst541nz6QgEB7Sfd_KZqGr0R0GxsmzW7K9"
+
+def get_nexar_token():
+    url = "https://identity.nexar.com/connect/token"
+    data = {"grant_type": "client_credentials", "client_id": NEXAR_CLIENT_ID, "client_secret": NEXAR_CLIENT_SECRET}
+    response = requests.post(url, data=data)
+    response.raise_for_status()
+    return response.json()["access_token"]
+
+def fetch_part_data(part_number):
+    try:
+        token = get_nexar_token()
+    except Exception as e:
+        return {"status": "error", "message": f"토큰 발급 실패: {str(e)}"}
+
+    url = "https://api.nexar.com/graphql"
+    headers = {"Authorization": f"Bearer {token}"}
+    query = """
+    query Search($q: String!) {
+        supSearch(q: $q) {
+            results {
+                part {
+                    mpn
+                    sellers {
+                        company { name }
+                        offers {
+                            clickUrl
+                            sku
+                            inventoryLevel
+                            moq
+                            packaging
+                            prices { price quantity }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    """
+    try:
+        response = requests.post(url, json={"query": query, "variables": {"q": part_number}}, headers=headers)
+        response.raise_for_status()
+        raw_data = response.json()
+        print(f"📡 API 호출됨 [{part_number}]")
+        return {"status": "success", "data": raw_data}
+    except Exception as e:
+        return {"status": "error", "message": f"데이터 검색 실패: {str(e)}"}
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/api/search', methods=['POST'])
+def api_search():
+    part_number = request.json.get('part_number')
+    if not part_number:
+        return jsonify({"status": "error", "message": "부품 번호를 입력해주세요."})
+    return jsonify(fetch_part_data(part_number))
+
+@app.route('/api/shutdown', methods=['POST'])
+def shutdown():
+    os._exit(0)
+    return jsonify({"status": "success"})
+
+def open_browser(port):
+    time.sleep(1.5)
+    webbrowser.open(f"http://localhost:{port}")
+
+if __name__ == '__main__':
+    print("🚀 AtoZ 클라이언트 서버를 시작합니다...")
+    threading.Thread(target=open_browser, args=(9001,), daemon=True).start()
+    app.run(host='0.0.0.0', port=9001)

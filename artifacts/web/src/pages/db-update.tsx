@@ -21,11 +21,18 @@ interface MappingJson {
   itemCode: string;
   orderNo?: string;
   itemName: string;
-  orderQty: string;
+  orderQty: string | string[];   // 단일 컬럼 or 여러 수량 컬럼 배열
   orderPrice: string;
   deliveryAmount: string;
   deliveryStatus: string;
   note: string;
+}
+
+function resolveQty(row: Record<string, string>, qty: string | string[]): number {
+  if (Array.isArray(qty)) {
+    return qty.reduce((sum, col) => sum + (parseFloat(String(row[col] || "0")) || 0), 0);
+  }
+  return parseFloat(String(row[qty] || "0")) || 0;
 }
 
 interface UploadResult {
