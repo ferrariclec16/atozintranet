@@ -41,6 +41,7 @@ export default function OrderProcessingLog() {
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // 결과 보기 모달
   const [modalRows, setModalRows] = useState<OutputRow[] | null>(null);
@@ -70,9 +71,14 @@ export default function OrderProcessingLog() {
     setSelectedId((prev) => (prev === id ? null : id));
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!selectedId) return;
-    if (!confirm("선택한 기록을 삭제하시겠습니까?")) return;
+    setShowDeleteConfirm(true);
+  };
+
+  const doDelete = async () => {
+    if (!selectedId) return;
+    setShowDeleteConfirm(false);
     setIsDeleting(true);
     try {
       await fetch(`${BASE}/api/order-processing-log/${selectedId}`, {
@@ -390,6 +396,47 @@ export default function OrderProcessingLog() {
           </div>
         )}
       </main>
+
+      {/* 삭제 확인 모달 */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <Trash2 className="w-4 h-4 text-red-600" />
+              </div>
+              <h3 className="text-base font-semibold text-gray-900">기록 삭제</h3>
+            </div>
+            {(() => {
+              const log = logs.find((l) => l.id === selectedId);
+              return log ? (
+                <>
+                  <p className="text-sm text-gray-600 mb-1">아래 발주서 기록이 삭제됩니다.</p>
+                  <p className="text-sm font-semibold text-gray-900 mb-5">
+                    {log.company_name} — {log.file_name}
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-gray-600 mb-5">선택한 기록이 삭제됩니다.</p>
+              );
+            })()}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={doDelete}
+                className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 transition-colors"
+              >
+                삭제
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
