@@ -10,6 +10,7 @@ import Login from "@/pages/login";
 import NotFound from "@/pages/not-found";
 import Feature1 from "@/pages/feature1";
 import Feature2 from "@/pages/feature2";
+import DbUpdate from "@/pages/db-update";
 import LicenseIssue from "@/pages/admin/license-issue";
 import LicenseManage from "@/pages/admin/license-manage";
 import AccessLog from "@/pages/admin/access-log";
@@ -78,6 +79,9 @@ function Router() {
       </Route>
       <Route path="/feature2">
         <ProtectedRoute component={Feature2} />
+      </Route>
+      <Route path="/db-update">
+        <ProtectedRoute component={DbUpdate} />
       </Route>
       <Route path="/admin/license-issue">
         <AdminRoute component={LicenseIssue} />
