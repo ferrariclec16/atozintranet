@@ -1,0 +1,350 @@
+let globalExcelData = [];
+let apiCache = {};
+
+const WHITELIST = ["digi", "mouser", "arrow", "farnell", "element14", "tti", "verical", "future", "chip one"];
+const EXCEL_DISTRIBUTORS = ["Digi-Key", "Mouser", "Arrow", "Farnell", "Element14", "TTI", "Verical", "Future", "Chip One Stop", "TI"];
+
+function checkTrusted(companyName) {
+    const lowerName = companyName.toLowerCase();
+    if (WHITELIST.some(w => lowerName.includes(w))) return true;
+    if (lowerName === "ti" || lowerName === "texas instruments") return true;
+    return false;
+}
+
+async function shutdownApp() {
+    if(confirm("프로그램을 완전히 종료하시겠습니까?")) {
+        try { await fetch('/api/shutdown', { method: 'POST' }); } catch(e) {}
+        window.close(); document.body.innerHTML = "<h2 style='text-align:center; margin-top:50px; color:#666;'>종료되었습니다.</h2>";
+    }
+}
+
+function openExcelModal() {
+    document.getElementById('excelModal').style.display = 'flex';
+    document.getElementById('modal-rows-container').innerHTML = '';
+    addModalRow();
+}
+
+function closeExcelModal() { 
+    document.getElementById('excelModal').style.display = 'none'; 
+}
+
+function addModalRow() {
+    const container = document.getElementById('modal-rows-container');
+    const row = document.createElement('div');
+    row.className = 'modal-row';
+    row.innerHTML = `
+        <input type="text" placeholder="부품명" class="modal-input-part">
+        <input type="number" placeholder="필요 수량" class="modal-input-qty" onkeydown="handleTab(event, this)">
+        <button class="btn-delete" onclick="this.parentElement.remove()">❌</button>
+    `;
+    container.appendChild(row);
+    row.querySelector('.modal-input-part').focus();
+}
+
+function handleTab(e, element) {
+    if (e.key === 'Tab' && !e.shiftKey) {
+        const rows = document.querySelectorAll('.modal-row');
+        if (element.parentElement === rows[rows.length - 1]) {
+            e.preventDefault(); addModalRow();
+        }
+    }
+}
+
+function downloadCreatedExcel() {
+    const rows = document.querySelectorAll('.modal-row');
+    let wsData = [["부품명", "수량1", "수량2", "수량3"]];
+    let hasData = false;
+    rows.forEach(row => {
+        const part = row.querySelector('.modal-input-part').value.trim();
+        const qty = parseInt(row.querySelector('.modal-input-qty').value.trim());
+        if (part !== "") { wsData.push([part, isNaN(qty) || qty <= 0 ? 1 : qty, "", ""]); hasData = true; }
+    });
+    if (!hasData) return alert("입력된 데이터가 없습니다.");
+    let wb = XLSX.utils.book_new();
+    let ws = XLSX.utils.aoa_to_sheet(wsData);
+    ws['!cols'] = [ {wch: 25}, {wch: 10}, {wch: 10}, {wch: 10} ];
+    XLSX.utils.book_append_sheet(wb, ws, "검색리스트");
+    XLSX.writeFile(wb, "AtoZ_검색용_부품리스트.xlsx");
+    closeExcelModal();
+}
+
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('excelFileInput');
+if(dropZone) {
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault(); dropZone.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) { fileInput.files = e.dataTransfer.files; processExcelFile(e.dataTransfer.files[0]); }
+    });
+}
+
+function handleExcelUpload(event) { 
+    if(event.target.files[0]) processExcelFile(event.target.files[0]); event.target.value = ''; 
+}
+
+async function fetchAndAnalyze(partInput, targetQty) {
+    try {
+        let resData;
+        if (apiCache[partInput]) {
+            resData = apiCache[partInput];
+        } else {
+            const response = await fetch('/api/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ part_number: partInput }) });
+            resData = await response.json();
+            if (resData.status === 'success') {
+                apiCache[partInput] = resData;
+            }
+        }
+        let allValidOffers = [];
+
+        if (resData.status === 'success') {
+            const parts = resData.data?.data?.supSearch?.results;
+            if (parts && parts.length > 0) {
+                parts.forEach(resultItem => {
+                    const targetPart = resultItem.part;
+                    if (!targetPart) return;
+                    const sellers = targetPart.sellers || [];
+                    sellers.forEach(seller => {
+                        const companyName = seller.company?.name || "알 수 없는 유통사";
+                        if (!checkTrusted(companyName)) return;
+
+                        const offers = seller.offers || [];
+                        offers.forEach(offer => {
+                            const clickUrl = offer.clickUrl || "#";
+                            const moq = offer.moq || 1;
+                            const stock = offer.inventoryLevel || 0;
+                            let packaging = offer.packaging || "N/A";
+
+                            let buyQty = Math.max(targetQty, moq);
+                            let bestTotal = Infinity;
+                            let unitPrice = 0;
+                            let priceBreaksHtml = "-";
+
+                            if (offer.prices && offer.prices.length > 0) {
+                                priceBreaksHtml = offer.prices.map(p => `<span>${p.quantity.toLocaleString()}</span> $${p.price.toFixed(4)}`).join('<br>');
+                                let validPrices = offer.prices.filter(p => p.quantity <= buyQty);
+                                if(validPrices.length > 0) {
+                                    unitPrice = validPrices[validPrices.length - 1].price;
+                                    bestTotal = buyQty * unitPrice;
+                                }
+                            }
+
+                            if (bestTotal !== Infinity && stock >= 0) {
+                                allValidOffers.push({
+                                    company: companyName, clickUrl: clickUrl, stock: stock, moq: moq, packaging: packaging,
+                                    priceBreaksHtml: priceBreaksHtml, buyQty: buyQty, unitPrice: unitPrice, totalPrice: bestTotal
+                                });
+                            }
+                        });
+                    });
+                });
+                let bestPerOption = {};
+                allValidOffers.forEach(item => {
+                    let key = item.company + "_" + item.packaging;
+                    if (!bestPerOption[key] || item.totalPrice < bestPerOption[key].totalPrice) {
+                        bestPerOption[key] = item;
+                    }
+                });
+
+                let finalList = Object.values(bestPerOption);
+                finalList.sort((a, b) => a.totalPrice - b.totalPrice);
+                return { finalList: finalList };
+            }
+        }
+        return { finalList: [] };
+    } catch (error) {
+        return { finalList: [] };
+    }
+}
+
+function createAccordionItem(partName, targetQty, resultData, arrayIndex) {
+    const accArea = document.getElementById('accordion-area');
+    const itemId = 'acc-' + Math.random().toString(36).substr(2, 9);
+    const analyzedList = resultData.finalList;
+    const statusHtml = analyzedList.length > 0 ? `<span class="status-badge status-done">완료</span>` : `<span class="status-badge status-fail">결과 없음</span>`;
+
+    let tbodyHtml = '';
+    if (analyzedList.length === 0) {
+        tbodyHtml = `<tr><td colspan="7" style="text-align:center; padding: 20px;">조건에 맞는 화이트리스트 유통사가 없습니다.</td></tr>`;
+    } else {
+        analyzedList.forEach((item, idx) => {
+            const companyLink = item.clickUrl !== "#" ? `<a href="${item.clickUrl}" target="_blank" style="text-decoration:underline; color:inherit; font-weight:bold;">${item.company} ↗</a>` : `<b>${item.company}</b>`;
+            const isShortage = item.stock < targetQty;
+            const rowClass = isShortage ? 'shortage-row' : '';
+            const stockDisplay = isShortage ? `${item.stock.toLocaleString()} (재고부족)` : item.stock.toLocaleString();
+            const pkgStyle = isShortage ? 'color: #d93025; background: #fce8e6;' : 'color: #666; background: #f1f5f9;';
+
+            tbodyHtml += `
+            <tr class="${rowClass}">
+                <td>${companyLink}</td>
+                <td><span style="font-size:11px; padding:3px 6px; border-radius:4px; ${pkgStyle}">${item.packaging}</span></td>
+                <td>${stockDisplay}</td>
+                <td>${item.moq.toLocaleString()}</td>
+                <td class="price-breaks">${item.priceBreaksHtml}</td>
+                <td><b style="font-size: 14px;">${item.buyQty.toLocaleString()}</b></td>
+                <td class="total-price">$${item.totalPrice.toFixed(2)}</td>
+            </tr>
+            `;
+        });
+    }
+
+    const itemHtml = `
+    <div class="accordion-item">
+        <div class="accordion-header" onclick="toggleAccordion('${itemId}')">
+            <span>🔍 ${partName} <span style="font-size:12px; color:#666;">(수량: ${targetQty.toLocaleString()}개)</span></span>
+            ${statusHtml}
+        </div>
+        <div class="accordion-content" id="${itemId}">
+            <table>
+                <thead>
+                    <tr>
+                        <th width="20%">Distributor</th><th width="10%">Pkg</th><th width="10%">Stock</th><th width="10%">Min Qty</th>
+                        <th width="25%">Price Breaks</th><th width="10%">Buy Qty</th><th width="15%">Total ($)</th>
+                    </tr>
+                </thead>
+                <tbody>${tbodyHtml}</tbody>
+            </table>
+        </div>
+    </div>
+    `;
+    accArea.innerHTML += itemHtml;
+}
+
+function toggleAccordion(id) {
+    const content = document.getElementById(id);
+    content.style.display = content.style.display === "block" ? "none" : "block";
+}
+
+async function searchSinglePart() {
+    const partInput = document.getElementById('partInput').value.trim();
+    let targetQty = document.getElementById('qtyInput').value.trim();
+    targetQty = parseInt(targetQty.replace(/,/g, '')) || 1;
+
+    if (!partInput) return alert("부품 번호를 입력해주세요.");
+
+    const accArea = document.getElementById('accordion-area');
+    document.getElementById('loading').style.display = 'block';
+    accArea.style.display = 'block'; accArea.innerHTML = '';
+    globalExcelData = [];
+    apiCache = {};
+
+    const resultData = await fetchAndAnalyze(partInput, targetQty);
+    globalExcelData.push({ partName: partInput, qty: targetQty, data: resultData.finalList });
+    createAccordionItem(partInput, targetQty, resultData, 0);
+    const firstContent = accArea.querySelector('.accordion-content');
+    if(firstContent) firstContent.style.display = "block";
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('btnBatchExcel').disabled = false;
+}
+
+function processExcelFile(file) {
+    const reader = new FileReader();
+    reader.onload = async function(e) {
+        const data = new Uint8Array(e.target.result);
+        const worksheet = XLSX.read(data, { type: 'array' }).Sheets[XLSX.read(data, { type: 'array' }).SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        let partsToSearch = [];
+        for (let i = 0; i < jsonData.length; i++) {
+            const row = jsonData[i];
+            if (row.length > 0 && row[0] && String(row[0]).trim() !== "품명" && String(row[0]).trim() !== "부품명") {
+                let rawPartName = String(row[0]).trim();
+                let actualPartName = rawPartName.includes(',') ? rawPartName.split(',').pop().trim() : rawPartName;
+
+                for (let col = 1; col <= 3; col++) {
+                    if (row[col]) {
+                        let parsedQty = parseInt(String(row[col]).replace(/,/g, '').trim());
+                        if (!isNaN(parsedQty) && parsedQty > 0) {
+                            partsToSearch.push({ partName: actualPartName, qty: parsedQty });
+                        }
+                    }
+                }
+            }
+        }
+        if(partsToSearch.length === 0) return alert("엑셀 파일에서 유효한 데이터나 수량을 찾을 수 없습니다.");
+        await startBatchSearch(partsToSearch);
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+async function startBatchSearch(partsList) {
+    const loading = document.getElementById('loading'), accArea = document.getElementById('accordion-area');
+    loading.style.display = 'block'; accArea.style.display = 'block'; accArea.innerHTML = '';
+    globalExcelData = [];
+    apiCache = {};
+
+    for (let i = 0; i < partsList.length; i++) {
+        loading.innerText = `⏳ 일괄 검색 중... (${i + 1} / ${partsList.length})`;
+        const resultData = await fetchAndAnalyze(partsList[i].partName, partsList[i].qty);
+        globalExcelData.push({ partName: partsList[i].partName, qty: partsList[i].qty, data: resultData.finalList });
+        createAccordionItem(partsList[i].partName, partsList[i].qty, resultData, i);
+        if (i < partsList.length - 1 && !apiCache[partsList[i+1]?.partName]) {
+            await new Promise(resolve => setTimeout(resolve, 1500));
+        }
+    }
+    loading.innerText = `✅ 모든 검색이 완료되었습니다!`;
+    setTimeout(() => { loading.style.display = 'none'; }, 3000);
+    document.getElementById('btnBatchExcel').disabled = false;
+}
+
+function getOfferForDistributor(offers, distName) {
+    return offers.find(o => {
+        const companyLower = o.company.toLowerCase();
+        const headerLower = distName.toLowerCase();
+        if (headerLower === "ti" && (companyLower === "ti" || companyLower === "texas instruments")) return true;
+        if (headerLower !== "ti" && companyLower.includes(headerLower.replace("-key", "").replace(" one stop", ""))) return true;
+        return false;
+    });
+}
+
+function downloadBatchExcel() {
+    if (globalExcelData.length === 0) return alert("저장할 데이터가 없습니다.");
+    let wb = XLSX.utils.book_new();
+    let wsData = [];
+    globalExcelData.forEach((res) => {
+        wsData.push(["품목명", "수량"]);
+        wsData.push([res.partName, res.qty]);
+
+        let rowHeader = ["", ""];
+        EXCEL_DISTRIBUTORS.forEach(d => rowHeader.push(d));
+        wsData.push(rowHeader);
+
+        let rowPkg = ["Pkg", ""];
+        let rowStock = ["Stock", ""];
+        let rowMoq = ["Min Qty", ""];
+        let rowPb = ["Price Breaks", ""];
+        let rowBuy = ["Buy Qty", ""];
+        let rowTotal = ["Total", ""];
+
+        EXCEL_DISTRIBUTORS.forEach(dist => {
+            let offer = getOfferForDistributor(res.data, dist);
+            if (offer) {
+                const isShortage = offer.stock < res.qty;
+                const shortageText = isShortage ? " (재고부족)" : "";
+                const cleanPbText = offer.priceBreaksHtml.replace(/<br>/g, '\r\n').replace(/<[^>]+>/g, '');
+
+                rowPkg.push(offer.packaging);
+                rowStock.push(offer.stock.toLocaleString() + shortageText);
+                rowMoq.push(offer.moq.toLocaleString());
+                rowPb.push(cleanPbText);
+                rowBuy.push(offer.buyQty.toLocaleString());
+                rowTotal.push(`$${offer.totalPrice.toFixed(2)}`);
+            } else {
+                rowPkg.push("-");
+                rowStock.push("-");
+                rowMoq.push("-");
+                rowPb.push("-");
+                rowBuy.push("-");
+                rowTotal.push("-");
+            }
+        });
+
+        wsData.push(rowPkg, rowStock, rowMoq, rowPb, rowBuy, rowTotal);
+        wsData.push([]);
+    });
+    let ws = XLSX.utils.aoa_to_sheet(wsData);
+    let colWidths = [{wch: 15}, {wch: 10}];
+    for(let i=0; i<EXCEL_DISTRIBUTORS.length; i++) colWidths.push({wch: 18});
+    ws['!cols'] = colWidths;
+    XLSX.utils.book_append_sheet(wb, ws, "비교견적리포트");
+    XLSX.writeFile(wb, `AtoZ_단가비교_피벗.xlsx`);
+}
