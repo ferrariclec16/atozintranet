@@ -45,7 +45,6 @@ export default defineConfig({
     alias: {
       "@": path.resolve(import.meta.dirname, "src"),
       "@assets": path.resolve(import.meta.dirname, "..", "..", "attached_assets"),
-      exceljs: path.resolve(import.meta.dirname, "node_modules/exceljs/dist/es5/exceljs.browser.js"),
     },
     dedupe: ["react", "react-dom"],
   },
