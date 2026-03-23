@@ -85,7 +85,6 @@ interface Offer {
 }
 interface PartResult { partName: string; qty: number; offers: Offer[]; }
 
-const EXCEL_DISTRIBUTORS = ["Digi-Key","Mouser","Arrow","Farnell","Element14","TTI","Verical","Future","Chip One Stop","TI"];
 const RED   = { argb: "FFCC0000" };
 const BLUE  = { argb: "FF4472C4" };
 const WHITE = { argb: "FFFFFFFF" };
@@ -108,33 +107,37 @@ router.post("/parts/export", async (req, res) => {
   if (!results || results.length === 0) return res.status(400).json({ status: "error", message: "내보낼 데이터가 없습니다." });
 
   try {
+    // 전체 결과에서 등장하는 회사명을 수집 → 동적 컬럼
+    const companyOrder: string[] = [];
+    const seen = new Set<string>();
+    results.forEach(({ offers }) =>
+      offers.forEach(({ company }) => { if (!seen.has(company)) { seen.add(company); companyOrder.push(company); } })
+    );
+
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet("비교견적리포트");
     ws.columns = [
       { width: 14 }, { width: 20 },
-      ...EXCEL_DISTRIBUTORS.map(() => ({ width: 22 })),
+      ...companyOrder.map(() => ({ width: 24 })),
     ];
 
     results.forEach(({ partName, qty, offers }) => {
-      const r1 = ws.addRow(["품목명", partName, ...EXCEL_DISTRIBUTORS.map(() => "")]);
+      // 이 부품의 offer를 회사명으로 빠르게 조회
+      const offerByCompany = new Map<string, Offer>();
+      offers.forEach((o) => { if (!offerByCompany.has(o.company)) offerByCompany.set(o.company, o); });
+
+      const matched = companyOrder.map((c) => offerByCompany.get(c) ?? null);
+      const maxPbLines = Math.max(1, ...matched.map((o) => (o ? o.priceBreaks.length : 1)));
+
+      const r1 = ws.addRow(["품목명", partName, ...companyOrder.map(() => "")]);
       r1.height = 18; labelStyle(r1.getCell(1)); r1.getCell(2).font = { bold: true };
 
-      const r2 = ws.addRow(["수량", qty, ...EXCEL_DISTRIBUTORS.map(() => "")]);
+      const r2 = ws.addRow(["수량", qty, ...companyOrder.map(() => "")]);
       r2.height = 18; labelStyle(r2.getCell(1));
 
-      const r3 = ws.addRow(["", "", ...EXCEL_DISTRIBUTORS]);
+      const r3 = ws.addRow(["", "", ...companyOrder]);
       r3.height = 20;
-      EXCEL_DISTRIBUTORS.forEach((_, i) => headStyle(r3.getCell(i + 3)));
-
-      const matched = EXCEL_DISTRIBUTORS.map((dist) =>
-        offers.find((o) => {
-          const cn = o.company.toLowerCase().replace(/-/g, "");
-          const dn = dist.toLowerCase().replace(/-/g, "");
-          if (dn === "ti") return cn === "ti" || cn.includes("texas");
-          return cn.includes(dn) || dn.includes(cn);
-        }) ?? null
-      );
-      const maxPbLines = Math.max(1, ...matched.map((o) => (o ? o.priceBreaks.length : 1)));
+      companyOrder.forEach((_, i) => headStyle(r3.getCell(i + 3)));
 
       const rowNames = ["Pkg","Stock","Min Qty","Price Breaks","Buy Qty","Total"];
       const rowData: (string | number)[][] = rowNames.map(() => []);
