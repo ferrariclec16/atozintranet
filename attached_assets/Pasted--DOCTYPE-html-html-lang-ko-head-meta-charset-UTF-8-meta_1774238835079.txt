@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AtoZELECTRON 통합 발주 대시보드</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background-color: #f4f6f9; }
+        h2 { color: #333; }
+        .dashboard-container { max-width: 1400px; margin: 0 auto; }
+        .controls { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; display: flex; gap: 15px; align-items: center; }
+        #drop_zone { border: 2px dashed #007bff; background-color: #e9f2ff; padding: 40px; text-align: center; border-radius: 8px; cursor: pointer; transition: all 0.3s; margin-bottom: 20px; font-weight: bold; color: #0056b3; }
+        #drop_zone:hover { background-color: #d0e3ff; }
+        select, input { padding: 10px; border: 1px solid #ccc; border-radius: 5px; font-size: 14px; }
+        button { padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        button:hover { background-color: #0056b3; }
+        #downloadBtn { background-color: #28a745; display: none; }
+        #downloadBtn:hover { background-color: #218838; }
+        .table-container { overflow-x: auto; background: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; white-space: nowrap; font-size: 13px; }
+        th, td { border: 1px solid #eee; padding: 12px; text-align: center; }
+        th { background-color: #343a40; color: white; font-weight: normal; }
+        tbody tr:hover { background-color: #f8f9fa; }
+    </style>
+</head>
+<body>
+
+<div class="dashboard-container">
+    <h2>AtoZELECTRON 발주 및 납기 통합 시스템</h2>
+
+    <div class="controls">
+        <label for="companySelect"><b>대상 업체:</b></label>
+        <select id="companySelect">
+            <option value="한영넉스">한영넉스</option>
+        </select>
+        
+        <label for="searchInput"><b>품목명 검색:</b></label>
+        <input type="text" id="searchInput" placeholder="예: S1NB60-7062">
+        <button id="searchBtn">전산 조회</button>
+        <button id="downloadBtn">엑셀로 다운로드</button>
+    </div>
+
+    <div id="drop_zone">📥 발주서 엑셀 파일을 이곳에 드래그 앤 드롭 하세요</div>
+
+    <div class="table-container">
+        <table id="resultTable" style="display:none;">
+            <thead id="tableHead"></thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const SUPABASE_URL = 'https://ifkhmtqxqlqhfbawpyoy.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlma2htdHF4cWxxaGZiYXdweW95Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMjM5ODAsImV4cCI6MjA4OTc5OTk4MH0.--Fn92kmDfvnQbffWhssSiYPKwvk6ST-BdI9C3m_7nE';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const targetColumns = [
+        "발주일자", "납기일자", "발주구분", "품목코드", "발주번호", 
+        "품목명", "발주수량", "발주단가", "납품금액", "납품여부", 
+        "매입가(입고가)", "마진", "재고", "비고", "매입처", "연락처", "위치"
+    ];
+
+    let globalExcelData = [];
+
+    const dropZone = document.getElementById('drop_zone');
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.style.backgroundColor = '#d0e3ff'; });
+    dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); dropZone.style.backgroundColor = '#e9f2ff'; });
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.style.backgroundColor = '#e9f2ff';
+        const files = e.dataTransfer.files;
+        if (files.length > 0) readExcel(files[0]);
+    });
+
+    function readExcel(file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            globalExcelData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+            dropZone.innerText = `✅ [${file.name}] 업로드 완료! 검색을 진행해 주세요.`;
+            dropZone.style.borderColor = '#28a745';
+            dropZone.style.color = '#28a745';
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    document.getElementById('searchBtn').addEventListener('click', async () => {
+        if (globalExcelData.length === 0) return alert("먼저 엑셀 파일을 업로드해 주세요.");
+        
+        const query = document.getElementById('searchInput').value.trim();
+        const selectedCompany = document.getElementById('companySelect').value;
+
+        if (!query) return alert("검색할 품목명을 입력해 주세요.");
+
+        const { data: mappingData, error: mappingError } = await supabase
+            .from('excel_mappings')
+            .select('mapping_json')
+            .eq('company_name', selectedCompany)
+            .single();
+
+        if (mappingError || !mappingData) return alert("업체 매핑 정보를 불러오지 못했습니다. DB 설정을 확인해 주세요.");
+        const mapping = mappingData.mapping_json;
+
+        const filteredExcelData = globalExcelData.filter(row => {
+            const itemNameInExcel = row[mapping.itemName];
+            return itemNameInExcel && String(itemNameInExcel).includes(query);
+        });
+
+        if (filteredExcelData.length === 0) return alert("해당 품목이 엑셀 내에 존재하지 않습니다.");
+
+        const itemNames = [...new Set(filteredExcelData.map(row => row[mapping.itemName]))];
+
+        const { data: masterDataList, error: masterError } = await supabase
+            .from('master_data')
+            .select('*')
+            .in('item_name', itemNames);
+
+        if (masterError) return alert("전산 데이터를 불러오는 데 실패했습니다.");
+
+        const masterDataMap = {};
+        if (masterDataList) {
+            masterDataList.forEach(item => {
+                masterDataMap[item.item_name] = item;
+            });
+        }
+
+        const finalData = filteredExcelData.map(row => {
+            const rowItemName = row[mapping.itemName];
+            const dbInfo = masterDataMap[rowItemName] || {}; 
+            
+            const orderPrice = parseFloat(row[mapping.orderPrice]) || 0;
+            const purchasePrice = parseFloat(dbInfo.purchase_price) || 0;
+            const margin = orderPrice && purchasePrice ? (orderPrice - purchasePrice) : "";
+
+            return {
+                "발주일자": row[mapping.orderDate] || "",
+                "납기일자": row[mapping.dueDate] || "",
+                "발주구분": row[mapping.orderType] || "",
+                "품목코드": row[mapping.itemCode] || "",
+                "발주번호": row[mapping.orderNo] || "",
+                "품목명": rowItemName || "",
+                "발주수량": row[mapping.orderQty] || "",
+                "발주단가": orderPrice || "",
+                "납품금액": row[mapping.deliveryAmount] || "",
+                "납품여부": row[mapping.deliveryStatus] || "",
+                "매입가(입고가)": purchasePrice || "",
+                "마진": margin,
+                "재고": dbInfo.stock || "",
+                "비고": row[mapping.note] || "",
+                "매입처": dbInfo.supplier || "DB 미등록",
+                "연락처": dbInfo.contact || "",
+                "위치": dbInfo.location || ""
+            };
+        });
+
+        renderTable(finalData);
+    });
+
+    function renderTable(data) {
+        const tableHead = document.getElementById('tableHead');
+        const tableBody = document.getElementById('tableBody');
+        const resultTable = document.getElementById('resultTable');
+        const downloadBtn = document.getElementById('downloadBtn');
+
+        tableHead.innerHTML = '';
+        tableBody.innerHTML = '';
+
+        const trHead = document.createElement('tr');
+        targetColumns.forEach(colName => {
+            const th = document.createElement('th');
+            th.textContent = colName;
+            trHead.appendChild(th);
+        });
+        tableHead.appendChild(trHead);
+
+        data.forEach(row => {
+            const tr = document.createElement('tr');
+            targetColumns.forEach(colName => {
+                const td = document.createElement('td');
+                td.textContent = row[colName];
+                tr.appendChild(td);
+            });
+            tableBody.appendChild(tr);
+        });
+
+        resultTable.style.display = 'table';
+        downloadBtn.style.display = 'inline-block';
+    }
+
+    document.getElementById('downloadBtn').addEventListener('click', () => {
+        const resultTable = document.getElementById('resultTable');
+        const ws = XLSX.utils.table_to_sheet(resultTable);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "발주서_통합결과");
+        XLSX.writeFile(wb, "AtoZELECTRON_맞춤발주서.xlsx");
+    });
+</script>
+
+</body>
+</html>
