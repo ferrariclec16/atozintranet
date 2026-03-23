@@ -148,12 +148,34 @@ export default function Feature1() {
       const parts: { partName: string; qty: number }[] = [];
       json.forEach((row) => {
         if (!row[0] || ["품명", "부품명"].includes(String(row[0]).trim())) return;
-        const raw = String(row[0]).trim();
-        const name = raw.includes(",") ? raw.split(",").pop()!.trim() : raw;
+        let raw = String(row[0]).trim();
+
+        // Rule 1: "A -> B" → B만 사용
+        if (raw.includes("->")) {
+          raw = raw.split("->").pop()!.trim();
+        }
+
+        // Rule 2: "A,B" → B만 사용 (기존 동작)
+        const baseName = raw.includes(",") ? raw.split(",").pop()!.trim() : raw;
+
+        // Rule 3: "abc(def)" → abc 와 def 모두 검색
+        const names: string[] = [];
+        const parenMatch = baseName.match(/^(.+?)\((.+?)\)(.*)$/);
+        if (parenMatch) {
+          const outer = (parenMatch[1] + parenMatch[3]).trim();
+          const inner = parenMatch[2].trim();
+          if (outer) names.push(outer);
+          if (inner) names.push(inner);
+        } else {
+          names.push(baseName);
+        }
+
         for (let col = 1; col <= 3; col++) {
           if (row[col]) {
             const q = parseInt(String(row[col]).replace(/,/g, "").trim());
-            if (!isNaN(q) && q > 0) parts.push({ partName: name, qty: q });
+            if (!isNaN(q) && q > 0) {
+              names.forEach((n) => { if (n) parts.push({ partName: n, qty: q }); });
+            }
           }
         }
       });
