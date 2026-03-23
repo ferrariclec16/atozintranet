@@ -71,7 +71,6 @@ export default function DbUpdate() {
     const { data } = await supabase.from("excel_mappings").select("company_name");
     const names = (data || []).map((d: { company_name: string }) => d.company_name);
     setCompanies(names);
-    if (names.length > 0) setSelectedCompany(names[0]);
     setIsLoadingCompanies(false);
   };
 
@@ -385,6 +384,7 @@ export default function DbUpdate() {
                     onChange={(e) => { setSelectedCompany(e.target.value); setUploadResults([]); }}
                     className="appearance-none bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 pr-10 text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer min-w-[200px]"
                   >
+                    <option value="">— 선택 —</option>
                     {companies.map((c) => (
                       <option key={c} value={c}>{c}</option>
                     ))}
