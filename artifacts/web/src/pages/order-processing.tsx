@@ -1,8 +1,9 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { Sidebar } from "@/components/layout/sidebar";
 import {
   FileText, Upload, X, ChevronDown,
   AlertCircle, Loader2, Download, CheckCircle2,
+  Search, Copy, Check,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
@@ -66,7 +67,21 @@ export default function OrderProcessing() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [outputRows, setOutputRows] = useState<OutputRow[] | null>(null);
   const [totalRows, setTotalRows] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [copiedCell, setCopiedCell] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 복사 가능 컬럼
+  const COPY_COLS = ["품목코드", "발주번호", "품목명"];
+
+  const filteredRows = useMemo(() => {
+    if (!outputRows) return null;
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return outputRows;
+    return outputRows.filter((r) =>
+      COPY_COLS.some((col) => String(r[col] ?? "").toLowerCase().includes(q))
+    );
+  }, [outputRows, searchQuery]);
 
   useEffect(() => {
     (async () => {
@@ -200,12 +215,14 @@ export default function OrderProcessing() {
     setIsLoaded(false);
     setError("");
     setTotalRows(0);
+    setSearchQuery("");
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleDownload = () => {
-    if (!outputRows || outputRows.length === 0) return;
-    const ws = XLSX.utils.json_to_sheet(outputRows, { header: OUTPUT_COLUMNS });
+    const rows = filteredRows;
+    if (!rows || rows.length === 0) return;
+    const ws = XLSX.utils.json_to_sheet(rows, { header: OUTPUT_COLUMNS });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "발주정리");
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -323,8 +340,11 @@ export default function OrderProcessing() {
                   <span className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">3</span>
                   <CheckCircle2 className="w-5 h-5 text-green-500" />
                   <span className="font-semibold text-gray-800">발주 정리 결과</span>
-                  <span className={`text-sm font-medium px-2.5 py-0.5 rounded-full ${outputRows.length > 0 ? "bg-blue-50 text-blue-700" : "bg-gray-100 text-gray-400"}`}>
-                    {outputRows.length}건
+                  <span className={`text-sm font-medium px-2.5 py-0.5 rounded-full ${(filteredRows?.length ?? 0) > 0 ? "bg-blue-50 text-blue-700" : "bg-gray-100 text-gray-400"}`}>
+                    {filteredRows?.length ?? 0}건
+                    {searchQuery && outputRows && filteredRows && filteredRows.length !== outputRows.length && (
+                      <span className="text-gray-400 font-normal ml-1">/ 전체 {outputRows.length}건</span>
+                    )}
                   </span>
                 </div>
 
@@ -339,9 +359,36 @@ export default function OrderProcessing() {
                 )}
               </div>
 
-              {outputRows.length === 0 ? (
+              {/* 검색창 */}
+              {outputRows.length > 0 && (
+                <div className="px-6 py-3 border-b border-gray-100">
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="품목코드, 발주번호, 품목명 검색..."
+                      className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 placeholder-gray-400"
+                    />
+                    {searchQuery && (
+                      <button
+                        onClick={() => setSearchQuery("")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs font-medium"
+                      >
+                        지우기
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {(filteredRows?.length ?? 0) === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <p className="text-sm font-medium text-gray-500">처리된 항목이 없습니다</p>
+                  <Search className="w-10 h-10 text-gray-200 mb-3" />
+                  <p className="text-sm font-medium text-gray-500">
+                    {searchQuery ? `"${searchQuery}" 검색 결과가 없습니다` : "처리된 항목이 없습니다"}
+                  </p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -360,7 +407,7 @@ export default function OrderProcessing() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {outputRows.map((row, i) => (
+                      {(filteredRows || []).map((row, i) => (
                         <tr key={i} className={`hover:bg-gray-50 transition-colors ${i % 2 === 0 ? "" : "bg-gray-50/50"}`}>
                           <td className="px-3 py-2.5 text-center text-xs text-gray-400 border-r border-gray-100">{i + 1}</td>
                           {OUTPUT_COLUMNS.map((col) => {
@@ -374,6 +421,37 @@ export default function OrderProcessing() {
                               displayVal = String(val ?? "");
                             }
                             const isMasterCol = MASTER_COLS.includes(col);
+                            const isCopyCol = COPY_COLS.includes(col);
+
+                            if (isCopyCol) {
+                              const cellKey = `${col}-${i}`;
+                              const isCopied = copiedCell === cellKey && displayVal !== "";
+                              return (
+                                <td key={col} className="px-3 py-2.5 text-center whitespace-nowrap border-r border-gray-100 text-xs text-gray-700">
+                                  <div className="flex items-center justify-center gap-1.5 group">
+                                    <span>{displayVal}</span>
+                                    {displayVal && (
+                                      <button
+                                        onClick={() => {
+                                          navigator.clipboard.writeText(displayVal).then(() => {
+                                            setCopiedCell(cellKey);
+                                            setTimeout(() => setCopiedCell(null), 1500);
+                                          });
+                                        }}
+                                        className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-blue-600"
+                                        title="복사"
+                                      >
+                                        {isCopied
+                                          ? <Check className="w-3 h-3 text-green-500" />
+                                          : <Copy className="w-3 h-3" />
+                                        }
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              );
+                            }
+
                             return (
                               <td
                                 key={col}
