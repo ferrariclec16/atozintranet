@@ -22,7 +22,7 @@ PORT = "22333"
 BASE_PATH = "/"
 
 [services.production]
-build = ["pnpm", "--filter", "@workspace/web", "run", "build"]
+build = ["bash", "-c", "pnpm install && pnpm --filter @workspace/web run build"]
 publicDir = "artifacts/web/dist/public"
 serve = "static"
 
