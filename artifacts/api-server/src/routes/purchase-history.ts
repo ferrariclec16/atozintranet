@@ -37,6 +37,7 @@ interface HistoryRow {
   note?: string;
   purchase_price?: number;
   supplier?: string;
+  db_seq?: number | null;
 }
 
 router.post("/purchase-history/upload", requireAuth, async (req, res) => {
@@ -63,23 +64,25 @@ router.post("/purchase-history/upload", requireAuth, async (req, res) => {
     }
 
     let inserted = 0;
+    let dbSeq = 1; // DB형식 행 순번 (1부터 시작)
     for (const row of rows) {
       if (!row.item_name) continue;
 
       if (replace) {
-        // DB 형식: DELETE 후 INSERT, 파일 내 중복은 마지막 값으로 업데이트
+        // DB 형식: 행마다 고유 db_seq 부여 → 중복 키 충돌 없이 전행 저장
         await client.query(
           `INSERT INTO purchase_history
              (company_name, order_date, due_date, order_type, item_code, order_no,
               item_name, order_qty, order_price, delivery_amount, delivery_status, note,
-              purchase_price, supplier)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+              purchase_price, supplier, db_seq)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
            ON CONFLICT (
              company_name,
              COALESCE(item_code, ''),
              COALESCE(order_no, ''),
              COALESCE(order_qty::text, '0'),
-             COALESCE(order_price::text, '0')
+             COALESCE(order_price::text, '0'),
+             COALESCE(db_seq::text, '')
            ) DO UPDATE SET
              item_name       = EXCLUDED.item_name,
              delivery_amount = EXCLUDED.delivery_amount,
@@ -101,6 +104,7 @@ router.post("/purchase-history/upload", requireAuth, async (req, res) => {
             row.note || null,
             row.purchase_price || null,
             row.supplier || null,
+            dbSeq++,
           ]
         );
       } else {
