@@ -72,7 +72,7 @@ export default function Dashboard() {
           {isAdmin && (
             <div>
               <h2 className="text-xs font-semibold text-orange-400 uppercase tracking-widest mb-3">관리자 전용</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <a
                   href="/admin/access-log"
                   className="bg-white rounded-xl border border-orange-100 p-5 hover:border-orange-300 hover:shadow-sm transition-all cursor-pointer group"

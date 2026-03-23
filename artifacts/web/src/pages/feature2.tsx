@@ -73,6 +73,7 @@ export default function Feature2() {
   const [isSearching, setIsSearching] = useState(false);
   const [isLoadingCompanies, setIsLoadingCompanies] = useState(true);
   const [error, setError] = useState<string>("");
+  const [sampleOpen, setSampleOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -272,11 +273,20 @@ export default function Feature2() {
         </header>
 
         <div className="flex-1 p-8 max-w-6xl w-full mx-auto">
-          <div className="mb-6">
-            <h1 className="text-xl font-bold text-gray-900">업체별 발주서 맞춤 검색</h1>
-            <p className="text-sm text-gray-500 mt-1">
-              담당 업체를 선택하고 발주서 엑셀 파일을 업로드하면 설정된 양식에 맞추어 엑셀이 생성됩니다.
-            </p>
+          <div className="flex items-start justify-between mb-6">
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">업체별 발주서 맞춤 검색</h1>
+              <p className="text-sm text-gray-500 mt-1">
+                담당 업체를 선택하고 발주서 엑셀 파일을 업로드하면 설정된 양식에 맞추어 엑셀이 생성됩니다.
+              </p>
+            </div>
+            <button
+              onClick={() => setSampleOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors whitespace-nowrap"
+            >
+              <FileText className="w-4 h-4" />
+              샘플 양식 보기
+            </button>
           </div>
 
           {/* 안내 */}
@@ -501,6 +511,97 @@ export default function Feature2() {
           )}
         </div>
       </main>
+
+      {/* 샘플 양식 모달 */}
+      {sampleOpen && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center backdrop-blur-sm p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <div>
+                <h2 className="text-base font-bold text-gray-800">📋 발주서 엑셀 샘플 양식</h2>
+                <p className="text-xs text-gray-400 mt-0.5">업체별로 컬럼 이름이 다를 수 있습니다. Supabase 매핑 설정 기준으로 동작합니다.</p>
+              </div>
+              <button onClick={() => setSampleOpen(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+            </div>
+            <div className="overflow-auto flex-1 p-6 space-y-5">
+              {/* 업로드 파일 형식 */}
+              <div>
+                <h3 className="text-sm font-bold text-gray-700 mb-2">📁 업로드할 발주서 엑셀 (업체별 원본 양식)</h3>
+                <div className="overflow-x-auto rounded-lg border border-gray-200">
+                  <table className="text-xs w-full border-collapse">
+                    <thead>
+                      <tr className="bg-gray-100">
+                        {["발주일자", "납기일자", "발주구분", "품목코드", "발주번호", "품목명", "발주수량", "발주단가", "납품금액", "납품여부", "비고"].map((h) => (
+                          <th key={h} className="px-3 py-2 border border-gray-300 whitespace-nowrap font-semibold text-gray-600">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        ["2024-01-05", "2024-01-20", "일반", "P-0012", "PO-2401", "STM32F103C8T6", "500", "1,200", "600,000", "완료", ""],
+                        ["2024-02-10", "2024-02-25", "긴급", "P-0034", "PO-2402", "LM358N", "1000", "350", "350,000", "납품중", ""],
+                      ].map((row, i) => (
+                        <tr key={i} className="even:bg-gray-50">
+                          {row.map((cell, j) => (
+                            <td key={j} className="px-3 py-2 border border-gray-200 whitespace-nowrap text-gray-600">{cell}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-xs text-gray-400 mt-1.5">※ 컬럼 이름은 업체마다 다릅니다. Supabase <code className="bg-gray-100 px-1 rounded">excel_mappings</code>에 등록된 매핑 설정대로 읽습니다.</p>
+              </div>
+
+              {/* 출력 결과 양식 */}
+              <div>
+                <h3 className="text-sm font-bold text-gray-700 mb-2">📊 검색 후 생성되는 통합 결과 엑셀</h3>
+                <div className="overflow-x-auto rounded-lg border border-gray-200">
+                  <table className="text-xs w-full border-collapse">
+                    <thead>
+                      <tr>
+                        {["발주일자","품목명","발주수량","발주단가","납품금액","매입가","마진","재고","매입처"].map((h) => (
+                          <th key={h} className="px-3 py-2 border border-gray-300 bg-gray-100 whitespace-nowrap font-semibold text-gray-600">{h}</th>
+                        ))}
+                        {["총발주수량(이력)","총발주금액(이력)","발주횟수(이력)","최근발주일(이력)"].map((h) => (
+                          <th key={h} className="px-3 py-2 border border-orange-300 bg-orange-50 whitespace-nowrap font-semibold text-orange-600">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="even:bg-gray-50">
+                        {["2024-01-05","STM32F103C8T6","500","1,200","600,000","900","300","2,000","Digi-Key"].map((cell, j) => (
+                          <td key={j} className="px-3 py-2 border border-gray-200 whitespace-nowrap text-gray-600">{cell}</td>
+                        ))}
+                        {["8,500","10,200,000","17","2024-03-12"].map((cell, j) => (
+                          <td key={j} className="px-3 py-2 border border-orange-200 bg-orange-50/40 whitespace-nowrap text-orange-700 font-medium">{cell}</td>
+                        ))}
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-xs text-gray-400 mt-1.5">※ <span className="text-orange-500 font-medium">주황색 컬럼</span>은 DB 업데이트 메뉴에서 누적된 발주 이력 데이터입니다.</p>
+              </div>
+
+              {/* 안내 */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-xs text-blue-700 space-y-1">
+                <p><strong>① 담당 업체 선택</strong> → 해당 업체의 컬럼 매핑 자동 적용</p>
+                <p><strong>② 발주서 엑셀 업로드</strong> (선택) → 파일 없으면 DB 이력만 조회</p>
+                <p><strong>③ 품목명 검색</strong> → 파일+DB 이력 통합 결과 또는 DB 이력만 표시</p>
+                <p><strong>④ 엑셀 다운로드</strong> → 위 통합 양식으로 저장</p>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end">
+              <button
+                onClick={() => setSampleOpen(false)}
+                className="px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
