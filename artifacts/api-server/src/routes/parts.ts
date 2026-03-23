@@ -107,37 +107,52 @@ router.post("/parts/export", async (req, res) => {
   if (!results || results.length === 0) return res.status(400).json({ status: "error", message: "내보낼 데이터가 없습니다." });
 
   try {
-    // 전체 결과에서 등장하는 회사명을 수집 → 동적 컬럼
-    const companyOrder: string[] = [];
-    const seen = new Set<string>();
+    // 전체 결과에서 회사+패키징 조합을 수집 → 동적 컬럼 (중복 없이 순서 유지)
+    interface ColKey { company: string; packaging: string; label: string; key: string; }
+    const colList: ColKey[] = [];
+    const seenKeys = new Set<string>();
     results.forEach(({ offers }) =>
-      offers.forEach(({ company }) => { if (!seen.has(company)) { seen.add(company); companyOrder.push(company); } })
+      offers.forEach(({ company, packaging }) => {
+        const key = `${company}||${packaging}`;
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
+          colList.push({ company, packaging, label: `${company}\n(${packaging})`, key });
+        }
+      })
     );
 
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet("비교견적리포트");
     ws.columns = [
       { width: 14 }, { width: 20 },
-      ...companyOrder.map(() => ({ width: 24 })),
+      ...colList.map(() => ({ width: 26 })),
     ];
 
     results.forEach(({ partName, qty, offers }) => {
-      // 이 부품의 offer를 회사명으로 빠르게 조회
-      const offerByCompany = new Map<string, Offer>();
-      offers.forEach((o) => { if (!offerByCompany.has(o.company)) offerByCompany.set(o.company, o); });
+      // 회사+패키징 키로 offer 맵 구성
+      const offerMap = new Map<string, Offer>();
+      offers.forEach((o) => {
+        const k = `${o.company}||${o.packaging}`;
+        if (!offerMap.has(k)) offerMap.set(k, o);
+      });
 
-      const matched = companyOrder.map((c) => offerByCompany.get(c) ?? null);
+      const matched = colList.map((c) => offerMap.get(c.key) ?? null);
       const maxPbLines = Math.max(1, ...matched.map((o) => (o ? o.priceBreaks.length : 1)));
 
-      const r1 = ws.addRow(["품목명", partName, ...companyOrder.map(() => "")]);
+      const r1 = ws.addRow(["품목명", partName, ...colList.map(() => "")]);
       r1.height = 18; labelStyle(r1.getCell(1)); r1.getCell(2).font = { bold: true };
 
-      const r2 = ws.addRow(["수량", qty, ...companyOrder.map(() => "")]);
+      const r2 = ws.addRow(["수량", qty, ...colList.map(() => "")]);
       r2.height = 18; labelStyle(r2.getCell(1));
 
-      const r3 = ws.addRow(["", "", ...companyOrder]);
-      r3.height = 20;
-      companyOrder.forEach((_, i) => headStyle(r3.getCell(i + 3)));
+      // 헤더: "Digi-Key\n(Cut Tape)" 형식으로 두 줄 표현
+      const r3 = ws.addRow(["", "", ...colList.map((c) => c.label)]);
+      r3.height = 30;
+      colList.forEach((_, i) => {
+        const cell = r3.getCell(i + 3);
+        headStyle(cell);
+        cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      });
 
       const rowNames = ["Pkg","Stock","Min Qty","Price Breaks","Buy Qty","Total"];
       const rowData: (string | number)[][] = rowNames.map(() => []);
