@@ -238,20 +238,26 @@ export default function DbUpdate() {
           if (rows.length === 0 && normRows.length > 0 && normRows[0]["품명"]) {
             rows = normRows
               .filter((r) => r["품명"])
-              .map((r) => ({
-                company_name: companyName,
-                order_date: null,
-                due_date: null,
-                order_type: null,
-                item_code: r["품목코드"] || null,
-                order_no: null,
-                item_name: r["품명"],
-                order_qty: parseFloat(r["수량"]) || 0,
-                order_price: parseFloat(r["납품가"]) || 0,
-                delivery_amount: parseFloat(r["합계"]) || 0,
-                delivery_status: null,
-                note: null,
-              }));
+              .map((r) => {
+                const qty = parseFloat(r["수량"]) || 0;
+                const cost = parseFloat(r["원가"]) || 0;
+                return {
+                  company_name: companyName,
+                  order_date: null,
+                  due_date: null,
+                  order_type: null,
+                  item_code: r["품목코드"] || null,
+                  order_no: null,
+                  item_name: r["품명"],
+                  order_qty: qty,
+                  order_price: parseFloat(r["납품가"]) || 0,
+                  delivery_amount: parseFloat(r["합계"]) || 0,
+                  delivery_status: null,
+                  note: null,
+                  purchase_price: cost || null,
+                  supplier: r["구매처"] || null,
+                };
+              });
           }
 
           resolve(rows);

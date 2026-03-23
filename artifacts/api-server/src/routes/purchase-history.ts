@@ -35,6 +35,8 @@ interface HistoryRow {
   delivery_amount?: number;
   delivery_status?: string;
   note?: string;
+  purchase_price?: number;
+  supplier?: string;
 }
 
 router.post("/purchase-history/upload", requireAuth, async (req, res) => {
@@ -57,8 +59,9 @@ router.post("/purchase-history/upload", requireAuth, async (req, res) => {
       await client.query(
         `INSERT INTO purchase_history
            (company_name, order_date, due_date, order_type, item_code, order_no,
-            item_name, order_qty, order_price, delivery_amount, delivery_status, note)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+            item_name, order_qty, order_price, delivery_amount, delivery_status, note,
+            purchase_price, supplier)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
          ON CONFLICT (
            company_name,
            COALESCE(item_code, ''),
@@ -73,6 +76,8 @@ router.post("/purchase-history/upload", requireAuth, async (req, res) => {
            order_type       = EXCLUDED.order_type,
            delivery_amount  = EXCLUDED.delivery_amount,
            note             = EXCLUDED.note,
+           purchase_price   = EXCLUDED.purchase_price,
+           supplier         = EXCLUDED.supplier,
            uploaded_at      = NOW()`,
         [
           row.company_name || null,
@@ -87,6 +92,8 @@ router.post("/purchase-history/upload", requireAuth, async (req, res) => {
           row.delivery_amount || 0,
           row.delivery_status || null,
           row.note || null,
+          row.purchase_price || null,
+          row.supplier || null,
         ]
       );
       inserted++;

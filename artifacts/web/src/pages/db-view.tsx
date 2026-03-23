@@ -30,13 +30,15 @@ interface MasterData {
 interface PurchaseHistoryRow {
   id: number;
   company_name: string;
-  order_date: string;
-  item_code: string;
-  order_no: string;
+  order_date: string | null;
+  item_code: string | null;
+  order_no: string | null;
   item_name: string;
   order_qty: number;
   order_price: number;
-  delivery_amount: number;
+  delivery_amount: number | null;
+  purchase_price: number | null;
+  supplier: string | null;
 }
 
 export default function DbView() {
@@ -49,9 +51,14 @@ export default function DbView() {
   useEffect(() => {
     (async () => {
       setIsLoadingCompanies(true);
-      const { data } = await supabase.from("excel_mappings").select("company_name");
-      const names = (data || []).map((d: { company_name: string }) => d.company_name);
-      setCompanies(names);
+      try {
+        const res = await fetch("/api/purchase-history/stats", { credentials: "include" });
+        if (res.ok) {
+          const json = await res.json();
+          const names = (json.stats || []).map((s: { company_name: string }) => s.company_name);
+          setCompanies(names);
+        }
+      } catch { /* ignore */ }
       setIsLoadingCompanies(false);
     })();
   }, []);
@@ -80,9 +87,12 @@ export default function DbView() {
 
       const viewRows: OutputRow[] = rows.map((row) => {
         const db = masterMap[row.item_name] ?? ({} as MasterData);
-        const cost = parseFloat(String(db.purchase_price ?? "")) || 0;
+        // purchase_history에 저장된 원가·구매처 우선, 없으면 Supabase master_data fallback
+        const cost = Number(row.purchase_price) || parseFloat(String(db.purchase_price ?? "")) || 0;
+        const supplierVal = row.supplier || db.supplier || "";
         const qty = Number(row.order_qty) || 0;
         const price = Number(row.order_price) || 0;
+        const total = Number(row.delivery_amount) || (qty * price);
         return {
           "품목코드": row.item_code ?? "",
           "품명": row.item_name ?? "",
@@ -90,10 +100,10 @@ export default function DbView() {
           "발주번호": row.order_no ?? "",
           "수량": qty,
           "납품가": price,
-          "합계": qty * price,
+          "합계": total,
           "원가": cost || "",
           "합계(원가)": cost > 0 ? cost * qty : "",
-          "구매처": db.supplier ?? "",
+          "구매처": supplierVal,
         };
       });
 
