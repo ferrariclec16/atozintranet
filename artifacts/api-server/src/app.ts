@@ -7,10 +7,14 @@ import router from "./routes";
 
 const app: Express = express();
 
+app.set("trust proxy", 1);
+
 app.use(cors({ credentials: true, origin: true }));
 app.use(cookieParser());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+
+const isProd = process.env.NODE_ENV === "production";
 
 app.use(
   session({
@@ -20,8 +24,8 @@ app.use(
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      secure: isProd,
+      sameSite: isProd ? "none" : "lax",
       maxAge: 1000 * 60 * 60 * 24 * 7,
     },
   })

@@ -73,9 +73,16 @@ router.post("/auth/login", (req, res) => {
     "unknown";
   appendLog({ time: kstNow(), username: employee.username, displayName: employee.displayName, ip });
 
-  res.json({
-    success: true,
-    user: { username: employee.username, displayName: employee.displayName, role: employee.role },
+  req.session.save((err) => {
+    if (err) {
+      console.error("[세션 저장 오류]", err);
+      res.status(500).json({ error: "세션 저장 중 오류가 발생했습니다." });
+      return;
+    }
+    res.json({
+      success: true,
+      user: { username: employee.username, displayName: employee.displayName, role: employee.role },
+    });
   });
 });
 
