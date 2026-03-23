@@ -51,7 +51,7 @@ query Search($q: String!) {
 }
 `;
 
-router.post("/api/parts/search", async (req, res) => {
+router.post("/parts/search", async (req, res) => {
   const { part_number } = req.body as { part_number?: string };
   if (!part_number) {
     return res.status(400).json({ status: "error", message: "부품 번호를 입력해주세요." });
