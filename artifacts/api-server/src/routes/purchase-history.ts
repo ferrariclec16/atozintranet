@@ -285,11 +285,11 @@ router.get("/purchase-history/list", requireAuth, async (req, res) => {
   try {
     const result = company
       ? await pool.query(
-          "SELECT * FROM purchase_history WHERE company_name = $1 ORDER BY order_date DESC NULLS LAST, id DESC",
+          "SELECT * FROM purchase_history WHERE company_name = $1 ORDER BY db_seq ASC NULLS LAST, order_date DESC NULLS LAST, id ASC",
           [company]
         )
       : await pool.query(
-          "SELECT * FROM purchase_history ORDER BY order_date DESC NULLS LAST, id DESC"
+          "SELECT * FROM purchase_history ORDER BY db_seq ASC NULLS LAST, order_date DESC NULLS LAST, id ASC"
         );
     return res.json({ rows: result.rows });
   } catch (e) {
