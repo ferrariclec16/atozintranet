@@ -124,13 +124,6 @@ export default function DbView() {
     );
   }, [dbViewRows, searchQuery]);
 
-  const handleCopy = (code: string) => {
-    navigator.clipboard.writeText(code).then(() => {
-      setCopiedCode(code);
-      setTimeout(() => setCopiedCode(null), 1500);
-    });
-  };
-
   const handleDownloadDbFormat = () => {
     if (!filteredRows || !filteredRows.length) return;
     const header = ["품목코드", "품명", "수량", "납품가", "합계", "", "원가", "합계(원가)", "구매처"];
@@ -297,16 +290,22 @@ export default function DbView() {
                             displayVal = String(val ?? "");
                           }
 
-                          if (col === "품목코드") {
-                            const code = String(val ?? "");
-                            const isCopied = copiedCode === code && code !== "";
+                          const isCopyCol = ["품목코드", "품명", "구매처"].includes(col);
+                          if (isCopyCol) {
+                            const cellKey = `${col}-${i}`;
+                            const isCopied = copiedCode === cellKey && displayVal !== "";
                             return (
-                              <td key={col} className="px-3 py-2.5 text-center whitespace-nowrap border-r border-gray-100 text-xs text-gray-700">
+                              <td key={col} className="px-3 py-2.5 text-center whitespace-nowrap border-r border-gray-100 last:border-r-0 text-xs text-gray-700">
                                 <div className="flex items-center justify-center gap-1.5 group">
                                   <span>{displayVal}</span>
-                                  {code && (
+                                  {displayVal && (
                                     <button
-                                      onClick={() => handleCopy(code)}
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(displayVal).then(() => {
+                                          setCopiedCode(cellKey);
+                                          setTimeout(() => setCopiedCode(null), 1500);
+                                        });
+                                      }}
                                       className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-blue-600"
                                       title="복사"
                                     >
