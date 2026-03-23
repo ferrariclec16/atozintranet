@@ -62,18 +62,15 @@ export function Sidebar() {
   return (
     <aside className="w-64 border-r border-gray-200 bg-white flex flex-col h-screen sticky top-0 shadow-sm">
       {/* Brand Header */}
-      <div className="h-16 px-5 flex items-center gap-3 border-b border-gray-200">
-        <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
-          <span className="text-white font-black text-xs">AZ</span>
-        </div>
-        <div className="flex flex-col min-w-0">
-          <span className="font-black text-sm leading-tight text-gray-900 tracking-tight truncate">
-            AtoZ ELECTRON
-          </span>
-          <span className="text-[10px] text-blue-500 font-semibold tracking-widest uppercase">
-            인트라넷
-          </span>
-        </div>
+      <div className="h-16 px-4 flex items-center justify-between border-b border-gray-200">
+        <img
+          src="/logo.png"
+          alt="AtoZ ELECTRON"
+          className="h-10 object-contain"
+        />
+        <span className="text-[10px] text-blue-500 font-semibold tracking-widest uppercase flex-shrink-0">
+          인트라넷
+        </span>
       </div>
 
       {/* Navigation */}

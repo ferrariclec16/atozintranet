@@ -42,21 +42,11 @@ export default function Login() {
     <div className="min-h-screen w-full flex flex-col items-center justify-center bg-[#f5f6f8]">
       {/* Logo area */}
       <div className="flex flex-col items-center mb-8">
-        {/* 로고 이미지 자리 - 나중에 교체 */}
-        <div className="flex items-center gap-4 mb-4">
-          <div className="w-16 h-16 rounded-2xl bg-blue-600 flex items-center justify-center shadow-lg">
-            <span className="text-white font-black text-xl">AZ</span>
-          </div>
-          <div>
-            <div className="text-3xl font-black tracking-tight text-gray-900 leading-tight">
-              AtoZ ELECTRON
-            </div>
-            <div className="text-xs tracking-widest text-gray-400 uppercase font-medium mt-0.5">
-              에이투지 일렉트론
-            </div>
-          </div>
-        </div>
-
+        <img
+          src="/logo.png"
+          alt="AtoZ ELECTRON"
+          className="h-28 object-contain mb-4 drop-shadow-sm"
+        />
         <p className="text-sm text-gray-500">
           아이디와 비밀번호를 입력하여 로그인하세요
         </p>
