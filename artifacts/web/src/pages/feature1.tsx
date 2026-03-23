@@ -261,12 +261,6 @@ export default function Feature1() {
                 📝 직접 엑셀 만들기
               </button>
               <button
-                onClick={() => fileInputRef.current?.click()}
-                className="px-4 py-2 bg-indigo-500 text-white text-sm font-bold rounded-lg hover:bg-indigo-600 transition-colors"
-              >
-                📂 엑셀 검색
-              </button>
-              <button
                 onClick={downloadBatchExcel}
                 disabled={results.length === 0}
                 className="px-4 py-2 bg-green-700 text-white text-sm font-bold rounded-lg hover:bg-green-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
@@ -307,24 +301,28 @@ export default function Feature1() {
             onChange={(e) => { setPendingFileFromList(e.target.files); e.target.value = ""; }} />
 
           {pendingFile ? (
-            <div className="w-full mb-6 border-2 border-blue-400 bg-blue-50 rounded-xl px-6 py-5 flex items-center gap-4">
-              <span className="text-2xl">📄</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-800 truncate">{pendingFile.name}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{(pendingFile.size / 1024).toFixed(1)} KB</p>
+            <div className="w-full mb-6 border-2 border-blue-400 bg-blue-50 rounded-xl px-6 pt-4 pb-4 flex flex-col gap-3">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">📄</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-800 truncate">{pendingFile.name}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{(pendingFile.size / 1024).toFixed(1)} KB</p>
+                </div>
+                <button
+                  onClick={() => { setPendingFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}
+                  className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-gray-200 hover:bg-red-100 text-gray-500 hover:text-red-600 text-lg font-bold transition-colors"
+                  title="파일 삭제"
+                >×</button>
               </div>
-              <button
-                onClick={() => { setPendingFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}
-                className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-gray-200 hover:bg-red-100 text-gray-500 hover:text-red-600 text-lg font-bold transition-colors"
-                title="파일 삭제"
-              >×</button>
-              <button
-                onClick={startExcelSearch}
-                disabled={loading}
-                className="flex-shrink-0 px-5 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-              >
-                🔍 검색 시작
-              </button>
+              <div className="flex justify-end">
+                <button
+                  onClick={startExcelSearch}
+                  disabled={loading}
+                  className="px-6 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                >
+                  🔍 엑셀 검색
+                </button>
+              </div>
             </div>
           ) : (
             <div
