@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from "react";
 import { Sidebar } from "@/components/layout/sidebar";
 import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 
 const WHITELIST = ["digi", "mouser", "arrow", "farnell", "element14", "tti", "verical", "future", "chip one"];
 
@@ -164,24 +165,59 @@ export default function Feature1() {
 
   const EXCEL_DISTRIBUTORS = ["Digi-Key", "Mouser", "Arrow", "Farnell", "Element14", "TTI", "Verical", "Future", "Chip One Stop", "TI"];
 
-  const downloadBatchExcel = () => {
+  const RED   = { argb: "FFCC0000" };
+  const BLUE  = { argb: "FF4472C4" };
+  const WHITE = { argb: "FFFFFFFF" };
+  const LBLUE = { argb: "FFDDEEFF" };
+  const GREY  = { argb: "FF999999" };
+
+  const labelStyle = (cell: ExcelJS.Cell) => {
+    cell.font = { bold: true };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: LBLUE };
+    cell.alignment = { vertical: "middle" };
+  };
+  const headStyle = (cell: ExcelJS.Cell) => {
+    cell.font = { bold: true, color: WHITE };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: BLUE };
+    cell.alignment = { horizontal: "center", vertical: "middle" };
+  };
+  const dataStyle = (cell: ExcelJS.Cell, shortage: boolean, wrap = false) => {
+    cell.font = shortage ? { color: RED } : undefined;
+    cell.alignment = { vertical: "top", wrapText: wrap };
+  };
+  const dashStyle = (cell: ExcelJS.Cell) => {
+    cell.font = { color: GREY };
+    cell.alignment = { vertical: "top" };
+  };
+
+  const downloadBatchExcel = async () => {
     if (results.length === 0) return;
 
-    const wsData: (string | number)[][] = [];
-    const rowHeights: { hpt: number }[] = [];
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("비교견적리포트");
+
+    ws.columns = [
+      { width: 14 },
+      { width: 20 },
+      ...EXCEL_DISTRIBUTORS.map(() => ({ width: 22 })),
+    ];
 
     results.forEach(({ partName, qty, offers }) => {
-      // 행1: 품목명 | 값
-      wsData.push(["품목명", partName, ...EXCEL_DISTRIBUTORS.map(() => "")]);
-      rowHeights.push({ hpt: 18 });
+      // 행1: 품목명
+      const r1 = ws.addRow(["품목명", partName, ...EXCEL_DISTRIBUTORS.map(() => "")]);
+      r1.height = 18;
+      labelStyle(r1.getCell(1));
+      r1.getCell(2).font = { bold: true };
 
-      // 행2: 수량 | 값
-      wsData.push(["수량", qty, ...EXCEL_DISTRIBUTORS.map(() => "")]);
-      rowHeights.push({ hpt: 18 });
+      // 행2: 수량
+      const r2 = ws.addRow(["수량", qty, ...EXCEL_DISTRIBUTORS.map(() => "")]);
+      r2.height = 18;
+      labelStyle(r2.getCell(1));
 
       // 행3: 유통사 헤더
-      wsData.push(["", "", ...EXCEL_DISTRIBUTORS]);
-      rowHeights.push({ hpt: 20 });
+      const r3 = ws.addRow(["", "", ...EXCEL_DISTRIBUTORS]);
+      r3.height = 20;
+      EXCEL_DISTRIBUTORS.forEach((_, i) => headStyle(r3.getCell(i + 3)));
 
       // 유통사별 offer 매칭
       const matched = EXCEL_DISTRIBUTORS.map((dist) =>
@@ -191,62 +227,55 @@ export default function Feature1() {
           return cn.includes(dn) || dn.includes(cn);
         }) ?? null
       );
-
-      // 최대 price break 줄 수 계산 (행 높이용)
       const maxPbLines = Math.max(1, ...matched.map((o) => (o ? o.priceBreaks.length : 1)));
 
-      const rowPkg:   (string | number)[] = ["Pkg", ""];
-      const rowStock: (string | number)[] = ["Stock", ""];
-      const rowMoq:   (string | number)[] = ["Min Qty", ""];
-      const rowPb:    (string | number)[] = ["Price Breaks", ""];
-      const rowBuy:   (string | number)[] = ["Buy Qty", ""];
-      const rowTotal: (string | number)[] = ["Total", ""];
+      const rowNames = ["Pkg", "Stock", "Min Qty", "Price Breaks", "Buy Qty", "Total"];
+      const rowData = rowNames.map(() => ["", ""] as (string | number)[]);
 
-      matched.forEach((offer) => {
+      matched.forEach((offer, mi) => {
         if (!offer) {
-          rowPkg.push("-"); rowStock.push("-"); rowMoq.push("-");
-          rowPb.push("-"); rowBuy.push("-"); rowTotal.push("-");
+          rowData.forEach((rd) => rd.push("-"));
           return;
         }
         const isShortage = offer.stock < qty;
-        // \n 포함 문자열은 SheetJS가 자동으로 wrapText 처리
         const pbText = offer.priceBreaks.map((p) => `${p.quantity.toLocaleString()}  $${p.price.toFixed(4)}`).join("\n");
-        const stockText = offer.stock.toLocaleString() + (isShortage ? " ⚠재고부족" : "");
-
-        rowPkg.push(offer.packaging);
-        rowStock.push(stockText);
-        rowMoq.push(offer.moq.toLocaleString());
-        rowPb.push(pbText);
-        rowBuy.push(offer.buyQty.toLocaleString());
-        rowTotal.push(`$${offer.totalPrice.toFixed(2)}`);
+        rowData[0].push(offer.packaging);
+        rowData[1].push(offer.stock.toLocaleString() + (isShortage ? " (재고부족)" : ""));
+        rowData[2].push(offer.moq.toLocaleString());
+        rowData[3].push(pbText);
+        rowData[4].push(offer.buyQty.toLocaleString());
+        rowData[5].push(`$${offer.totalPrice.toFixed(2)}`);
       });
 
-      wsData.push(rowPkg);   rowHeights.push({ hpt: 18 });
-      wsData.push(rowStock); rowHeights.push({ hpt: 18 });
-      wsData.push(rowMoq);   rowHeights.push({ hpt: 18 });
-      wsData.push(rowPb);    rowHeights.push({ hpt: Math.max(18, maxPbLines * 15) });
-      wsData.push(rowBuy);   rowHeights.push({ hpt: 18 });
-      wsData.push(rowTotal); rowHeights.push({ hpt: 18 });
-      wsData.push([]);
-      rowHeights.push({ hpt: 8 });
+      rowNames.forEach((name, ri) => {
+        const isPb = ri === 3;
+        const exRow = ws.addRow([name, "", ...rowData[ri].slice(2)]);
+        exRow.height = isPb ? Math.max(18, maxPbLines * 15) : 18;
+        labelStyle(exRow.getCell(1));
+
+        matched.forEach((offer, mi) => {
+          const cell = exRow.getCell(mi + 3);
+          if (!offer) {
+            dashStyle(cell);
+          } else {
+            const isShortage = offer.stock < qty;
+            dataStyle(cell, isShortage, isPb);
+          }
+        });
+      });
+
+      // 빈 행 구분
+      ws.addRow([]).height = 8;
     });
 
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
-
-    // Price Breaks 셀에 wrapText 직접 주입 (SheetJS CE)
-    Object.keys(ws).forEach((addr) => {
-      if (addr.startsWith("!")) return;
-      const cell = ws[addr];
-      if (typeof cell.v === "string" && cell.v.includes("\n")) {
-        cell.s = { alignment: { wrapText: true, vertical: "top" } };
-      }
-    });
-
-    ws["!cols"] = [{ wch: 14 }, { wch: 18 }, ...EXCEL_DISTRIBUTORS.map(() => ({ wch: 22 }))];
-    ws["!rows"] = rowHeights;
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "비교견적리포트");
-    XLSX.writeFile(wb, "AtoZ_단가비교_피벗.xlsx");
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "AtoZ_단가비교_피벗.xlsx";
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const downloadCreatedExcel = () => {
