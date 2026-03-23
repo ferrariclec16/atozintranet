@@ -52,10 +52,6 @@ export default function DbView() {
       const { data } = await supabase.from("excel_mappings").select("company_name");
       const names = (data || []).map((d: { company_name: string }) => d.company_name);
       setCompanies(names);
-      if (names.length > 0) {
-        setSelectedCompany(names[0]);
-        loadDbView(names[0]);
-      }
       setIsLoadingCompanies(false);
     })();
   }, []);
@@ -164,11 +160,13 @@ export default function DbView() {
                     <select
                       value={selectedCompany}
                       onChange={(e) => {
-                        setSelectedCompany(e.target.value);
-                        loadDbView(e.target.value);
+                        const val = e.target.value;
+                        setSelectedCompany(val);
+                        if (val) loadDbView(val);
                       }}
                       className="appearance-none bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 pr-10 text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer min-w-[200px]"
                     >
+                      <option value="" disabled>— 선택 —</option>
                       {companies.map((c) => <option key={c} value={c}>{c}</option>)}
                     </select>
                     <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />

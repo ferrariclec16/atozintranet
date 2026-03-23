@@ -81,7 +81,6 @@ export default function OrderProcessing() {
       } else {
         const names = data.map((d: { company_name: string }) => d.company_name);
         setCompanies(names);
-        if (names.length > 0) setSelectedCompany(names[0]);
       }
       setIsLoadingCompanies(false);
     })();
@@ -351,6 +350,7 @@ export default function OrderProcessing() {
                       onChange={(e) => { setSelectedCompany(e.target.value); handleClear(); }}
                       className="appearance-none bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 pr-10 text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer min-w-[200px]"
                     >
+                      <option value="" disabled>— 선택 —</option>
                       {companies.map((c) => <option key={c} value={c}>{c}</option>)}
                     </select>
                     <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -359,10 +359,11 @@ export default function OrderProcessing() {
               </div>
 
               {/* Step 2: 파일 업로드 */}
-              <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4 shadow-sm">
+              <div className={`bg-white rounded-xl border p-6 mb-4 shadow-sm transition-opacity ${!selectedCompany ? "border-gray-100 opacity-50 pointer-events-none" : "border-gray-200"}`}>
                 <div className="flex items-center gap-2 mb-4">
-                  <span className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">2</span>
+                  <span className={`w-6 h-6 rounded-full text-white text-xs font-bold flex items-center justify-center ${!selectedCompany ? "bg-gray-300" : "bg-blue-600"}`}>2</span>
                   <span className="font-semibold text-gray-800">발주 엑셀 업로드</span>
+                  {!selectedCompany && <span className="text-xs text-gray-400 ml-1">— 업체를 먼저 선택해주세요</span>}
                 </div>
                 {!isLoaded ? (
                   <div
