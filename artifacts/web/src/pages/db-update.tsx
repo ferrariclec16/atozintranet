@@ -150,14 +150,19 @@ export default function DbUpdate() {
           credentials: "include",
           body: JSON.stringify({ rows }),
         });
-        const json = await res.json();
         if (!res.ok) {
-          results.push({ fileName: file.name, inserted: 0, status: "error", message: json.error || "서버 오류" });
+          const text = await res.text();
+          let msg = "서버 오류";
+          try { msg = JSON.parse(text).error || msg; } catch { /* non-JSON response */ }
+          if (res.status === 413) msg = "파일 데이터가 너무 큽니다. 파일을 분할해 주세요.";
+          results.push({ fileName: file.name, inserted: 0, status: "error", message: msg });
         } else {
+          const json = await res.json();
           results.push({ fileName: file.name, inserted: json.inserted, status: "success" });
         }
-      } catch {
-        results.push({ fileName: file.name, inserted: 0, status: "error", message: "파일 파싱 오류" });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "파일 파싱 오류";
+        results.push({ fileName: file.name, inserted: 0, status: "error", message: msg });
       }
     }
 
