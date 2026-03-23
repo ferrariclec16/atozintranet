@@ -204,7 +204,10 @@ export default function DbUpdate() {
           const data = new Uint8Array(e.target!.result as ArrayBuffer);
           const workbook = XLSX.read(data, { type: "array" });
           const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+          // raw: true → 날짜/숫자 원시값 (발주서 형식)
           const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: "" }) as Record<string, unknown>[];
+          // raw: false → Excel에 표시된 서식 그대로 (DB 형식 숫자 정확도 보장)
+          const fmtRows = XLSX.utils.sheet_to_json(worksheet, { defval: "", raw: false }) as Record<string, unknown>[];
 
           // 컬럼명 공백 제거 후 정규화
           const normalize = (rows: Record<string, unknown>[]) =>
@@ -215,6 +218,7 @@ export default function DbUpdate() {
             });
 
           const normRows = normalize(rawRows);
+          const fmtNormRows = normalize(fmtRows);
 
           // ① 발주서 형식: Supabase 매핑 사용
           let rows = normRows
@@ -237,18 +241,16 @@ export default function DbUpdate() {
           let isDbFormat = false;
 
           // ② DB 형식 자동 감지: 품명, 수량, 납품가 컬럼이 있으면
-          if (rows.length === 0 && normRows.length > 0 && normRows[0]["품명"]) {
+          if (rows.length === 0 && fmtNormRows.length > 0 && fmtNormRows[0]["품명"]) {
             isDbFormat = true;
 
-            // Excel float 노이즈 제거 (예: 3200.0000000001 → 3200)
+            // Excel 표시값 기반 숫자 파싱 (쉼표 제거 후 파싱)
             const cleanNum = (s: string): number => {
               const n = parseFloat(s.replace(/,/g, ""));
-              if (isNaN(n) || n === 0) return 0;
-              const rounded6 = Math.round(n * 1e6) / 1e6;
-              return rounded6;
+              return isNaN(n) ? 0 : n;
             };
 
-            rows = normRows
+            rows = fmtNormRows
               .filter((r) => r["품명"])
               .map((r) => {
                 const qty   = cleanNum(r["수량"]);
