@@ -13,7 +13,7 @@ kind = "api"
   run = "pnpm --filter @workspace/api-server run dev"
 
   [services.production]
-  build = ["bash", "-c", "pnpm install && (cd artifacts/api-server && pnpm run build)"]
+  build = ["bash", "scripts/build-deploy.sh"]
 
   [services.production.run]
   args = ["node", "artifacts/api-server/dist/index.cjs"]

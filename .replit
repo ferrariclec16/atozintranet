@@ -9,7 +9,7 @@ id = "artifacts/mockup-sandbox"
 [deployment]
 router = "application"
 deploymentTarget = "autoscale"
-build = ["bash", "-c", "pnpm install && (cd artifacts/web && pnpm run build) && (cd artifacts/api-server && pnpm run build)"]
+build = ["bash", "scripts/build-deploy.sh"]
 run = ["node", "artifacts/api-server/dist/index.cjs"]
 
 [deployment.postBuild]

@@ -22,7 +22,7 @@ kind = "web"
   BASE_PATH = "/"
 
   [services.production]
-  build = ["bash", "-c", "pnpm install && (cd artifacts/web && pnpm run build)"]
+  build = ["bash", "scripts/build-deploy.sh"]
   publicDir = "artifacts/web/dist/public"
   serve = "static"
 
