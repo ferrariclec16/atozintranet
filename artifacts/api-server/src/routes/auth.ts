@@ -1,42 +1,20 @@
 import { Router, type IRouter } from "express";
 import { employees } from "../config/employees";
-import fs from "fs";
-import path from "path";
+import { Pool } from "pg";
 
 const router: IRouter = Router();
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
-// ── 접속 로그 (파일 기반) ─────────────────────────────────────────
-const LOG_FILE = path.join(process.cwd(), ".cache", "access-logs.json");
-
-interface AccessLog {
-  id: number;
-  time: string;
-  username: string;
-  displayName: string;
-  ip: string;
-}
-
-function loadLogs(): AccessLog[] {
-  try {
-    fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true });
-    if (fs.existsSync(LOG_FILE)) {
-      return JSON.parse(fs.readFileSync(LOG_FILE, "utf-8")) as AccessLog[];
-    }
-  } catch { /* ignore */ }
-  return [];
-}
-
-function appendLog(entry: Omit<AccessLog, "id">): void {
-  try {
-    fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true });
-    const logs = loadLogs();
-    const newEntry: AccessLog = { id: (logs[logs.length - 1]?.id ?? 0) + 1, ...entry };
-    logs.push(newEntry);
-    fs.writeFileSync(LOG_FILE, JSON.stringify(logs), "utf-8");
-  } catch (e) {
-    console.error("[접속 로그 저장 실패]", e);
-  }
-}
+// 테이블 자동 생성
+pool.query(`
+  CREATE TABLE IF NOT EXISTS access_logs (
+    id        SERIAL PRIMARY KEY,
+    time      TEXT NOT NULL,
+    username  TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    ip        TEXT NOT NULL
+  )
+`).catch((e) => console.error("[access_logs 테이블 생성 실패]", e));
 
 function kstNow(): string {
   return new Date(Date.now() + 9 * 60 * 60 * 1000)
@@ -45,8 +23,19 @@ function kstNow(): string {
     .substring(0, 19);
 }
 
+async function appendLog(entry: { time: string; username: string; displayName: string; ip: string }) {
+  try {
+    await pool.query(
+      `INSERT INTO access_logs (time, username, display_name, ip) VALUES ($1, $2, $3, $4)`,
+      [entry.time, entry.username, entry.displayName, entry.ip]
+    );
+  } catch (e) {
+    console.error("[접속 로그 저장 실패]", e);
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────
-router.post("/auth/login", (req, res) => {
+router.post("/auth/login", async (req, res) => {
   const { username, password } = req.body as { username?: string; password?: string };
 
   if (!username || !password) {
@@ -66,12 +55,12 @@ router.post("/auth/login", (req, res) => {
   req.session.username = employee.username;
   req.session.role = employee.role;
 
-  // 접속 로그 기록
   const ip =
     (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
     req.socket.remoteAddress ||
     "unknown";
-  appendLog({ time: kstNow(), username: employee.username, displayName: employee.displayName, ip });
+
+  await appendLog({ time: kstNow(), username: employee.username, displayName: employee.displayName, ip });
 
   req.session.save((err) => {
     if (err) {
@@ -104,12 +93,18 @@ router.get("/auth/me", (req, res) => {
 });
 
 // 관리자용 접속 로그 조회
-router.get("/admin/access-logs", (req, res) => {
+router.get("/admin/access-logs", async (req, res) => {
   if (!req.session.username) { res.status(401).json({ error: "로그인이 필요합니다." }); return; }
   if (req.session.role !== "admin") { res.status(403).json({ error: "관리자만 접근할 수 있습니다." }); return; }
 
-  const logs = loadLogs();
-  res.json({ logs: logs.reverse() }); // 최신순
+  try {
+    const result = await pool.query(
+      `SELECT id, time, username, display_name AS "displayName", ip FROM access_logs ORDER BY id DESC`
+    );
+    res.json({ logs: result.rows });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 export default router;
