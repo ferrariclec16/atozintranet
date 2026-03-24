@@ -253,13 +253,16 @@ export default function PartsSearch() {
               <p className="text-sm text-gray-500 mt-0.5">신뢰하는 유통사(Digi-Key, Mouser, Arrow 등)의 최저가를 패키징별로 검색합니다.</p>
               <p className="text-sm text-red-500 font-semibold">업체 이름을 클릭하면 구매페이지로 바로 이동합니다.</p>
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => { setModalOpen(true); setModalRows([{ id: 1, part: "", qty: "" }]); }}
-                className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                📝 직접 엑셀 만들기
-              </button>
+            <div className="flex gap-2 items-end">
+              <div className="flex flex-col items-center gap-0.5">
+                <button
+                  onClick={() => { setModalOpen(true); setModalRows([{ id: 1, part: "", qty: "" }]); }}
+                  className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  📝 직접 엑셀 만들기
+                </button>
+                <span className="text-xs text-gray-400">양식: 부품명 · 가격1 · 가격2 · 가격3</span>
+              </div>
               <button
                 onClick={downloadBatchExcel}
                 disabled={results.length === 0}
