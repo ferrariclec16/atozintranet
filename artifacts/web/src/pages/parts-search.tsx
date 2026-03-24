@@ -98,7 +98,7 @@ export default function PartsSearch() {
   const [qtyInput, setQtyInput] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
-  const [showFormatHint, setShowFormatHint] = useState(false);
+  const [showSampleModal, setShowSampleModal] = useState(false);
   const [modalRows, setModalRows] = useState<ModalRow[]>([{ id: 1, part: "", qty: "" }]);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -255,29 +255,13 @@ export default function PartsSearch() {
               <p className="text-sm text-red-500 font-semibold">업체 이름을 클릭하면 구매페이지로 바로 이동합니다.</p>
             </div>
             <div className="flex gap-2 items-center">
-              <div className="relative">
-                <button
-                  onClick={() => setShowFormatHint((v) => !v)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  엑셀 양식
-                  <span className="w-4 h-4 rounded-full bg-gray-200 text-gray-600 font-bold text-[10px] flex items-center justify-center leading-none">ⓘ</span>
-                </button>
-                {showFormatHint && (
-                  <div className="absolute right-0 top-full mt-1.5 z-30 bg-white border border-gray-200 rounded-xl shadow-lg p-3 w-52">
-                    <p className="text-xs font-semibold text-gray-700 mb-2">엑셀 파일 컬럼 양식</p>
-                    <div className="flex flex-col gap-1">
-                      {["부품명", "가격1", "가격2", "가격3"].map((col, i) => (
-                        <div key={col} className="flex items-center gap-2">
-                          <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 text-[10px] font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
-                          <span className="text-xs text-gray-700">{col}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <p className="text-[10px] text-gray-400 mt-2">가격 열은 비워도 됩니다.</p>
-                  </div>
-                )}
-              </div>
+              <button
+                onClick={() => setShowSampleModal(true)}
+                className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <span className="text-base">🗒️</span>
+                샘플 양식 보기
+              </button>
               <button
                 onClick={() => { setModalOpen(true); setModalRows([{ id: 1, part: "", qty: "" }]); }}
                 className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-colors"
@@ -517,6 +501,86 @@ export default function PartsSearch() {
                 📥 만든 엑셀 다운로드
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 샘플 양식 모달 */}
+      {showSampleModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🗒️</span>
+                <h2 className="text-base font-bold text-gray-900">부품 검색 엑셀 샘플 양식</h2>
+              </div>
+              <button onClick={() => setShowSampleModal(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+            </div>
+
+            {/* 안내사항 */}
+            <div className="flex items-start gap-2 mb-4 bg-blue-50 rounded-lg px-3 py-2.5">
+              <span className="text-blue-500 text-sm mt-0.5">ⓘ</span>
+              <div>
+                <p className="text-xs font-semibold text-blue-700 mb-1">안내사항</p>
+                <ul className="text-xs text-blue-700 space-y-0.5 list-disc list-inside">
+                  <li>첫 번째 행(1행)은 컬럼 제목으로 자동 무시(스킵)됩니다.</li>
+                  <li>실제 데이터는 반드시 2행부터 입력해 주세요.</li>
+                  <li>가격 열(B, C, D)은 비워도 됩니다.</li>
+                </ul>
+              </div>
+            </div>
+
+            {/* 샘플 표 */}
+            <div className="overflow-hidden rounded-lg border border-gray-200">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr>
+                    <th className="w-8 py-2 px-3 text-center text-xs text-gray-400 bg-gray-50 border-r border-gray-200"></th>
+                    {[
+                      { col: "A", label: "부품명", color: "text-green-700 bg-green-50" },
+                      { col: "B", label: "가격1",  color: "text-orange-600 bg-orange-50" },
+                      { col: "C", label: "가격2",  color: "text-orange-600 bg-orange-50" },
+                      { col: "D", label: "가격3",  color: "text-orange-600 bg-orange-50" },
+                    ].map(({ col, color }) => (
+                      <th key={col} className={`py-2 px-4 text-center text-xs font-bold border-r last:border-r-0 border-gray-200 ${color}`}>{col}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  <tr className="bg-gray-50">
+                    <td className="py-2 px-3 text-center text-xs text-gray-400 border-r border-gray-200">1</td>
+                    <td className="py-2 px-4 text-xs font-semibold text-gray-700 border-r border-gray-200">부품명 (필수)</td>
+                    <td className="py-2 px-4 text-xs font-semibold text-gray-700 border-r border-gray-200">가격1 (선택)</td>
+                    <td className="py-2 px-4 text-xs font-semibold text-gray-700 border-r border-gray-200">가격2 (선택)</td>
+                    <td className="py-2 px-4 text-xs font-semibold text-gray-700">가격3 (선택)</td>
+                  </tr>
+                  {[
+                    ["STM32F103C8T6", "1500", "1600", "1450"],
+                    ["LM358",         "200",  "220",  ""],
+                    ["ATmega328P",    "800",  "",     ""],
+                  ].map((row, i) => (
+                    <tr key={i}>
+                      <td className="py-2 px-3 text-center text-xs text-gray-400 border-r border-gray-200">{i + 2}</td>
+                      {row.map((cell, j) => (
+                        <td key={j} className={`py-2 px-4 text-xs border-r last:border-r-0 border-gray-100 ${cell ? "text-gray-700" : "text-gray-300 italic"}`}>
+                          {cell || "비워도 가능"}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                  <tr>
+                    <td colSpan={5} className="py-2 px-4 text-center text-xs text-gray-400 italic">… 하위 데이터 계속</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <button
+              onClick={() => setShowSampleModal(false)}
+              className="mt-4 w-full py-2.5 rounded-xl bg-gray-100 text-gray-600 text-sm font-medium hover:bg-gray-200 transition-colors"
+            >
+              닫기
+            </button>
           </div>
         </div>
       )}
