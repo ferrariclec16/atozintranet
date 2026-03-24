@@ -260,7 +260,7 @@ export default function PartsSearch() {
                 className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 border border-gray-200 rounded-lg hover:bg-gray-200 transition-colors"
               >
                 <span className="text-base">🗒️</span>
-                샘플 양식 보기
+                엑셀 양식 보기
               </button>
               <button
                 onClick={() => { setModalOpen(true); setModalRows([{ id: 1, part: "", qty: "" }]); }}
@@ -512,7 +512,7 @@ export default function PartsSearch() {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <span className="text-xl">🗒️</span>
-                <h2 className="text-base font-bold text-gray-900">부품 검색 엑셀 샘플 양식</h2>
+                <h2 className="text-base font-bold text-gray-900">부품 검색 엑셀 양식</h2>
               </div>
               <button onClick={() => setShowSampleModal(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
             </div>
