@@ -98,6 +98,7 @@ export default function PartsSearch() {
   const [qtyInput, setQtyInput] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [showFormatHint, setShowFormatHint] = useState(false);
   const [modalRows, setModalRows] = useState<ModalRow[]>([{ id: 1, part: "", qty: "" }]);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -253,16 +254,36 @@ export default function PartsSearch() {
               <p className="text-sm text-gray-500 mt-0.5">신뢰하는 유통사(Digi-Key, Mouser, Arrow 등)의 최저가를 패키징별로 검색합니다.</p>
               <p className="text-sm text-red-500 font-semibold">업체 이름을 클릭하면 구매페이지로 바로 이동합니다.</p>
             </div>
-            <div className="flex gap-2 items-end">
-              <div className="flex flex-col items-center gap-0.5">
+            <div className="flex gap-2 items-center">
+              <div className="relative">
                 <button
-                  onClick={() => { setModalOpen(true); setModalRows([{ id: 1, part: "", qty: "" }]); }}
-                  className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-colors"
+                  onClick={() => setShowFormatHint((v) => !v)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  📝 직접 엑셀 만들기
+                  엑셀 양식
+                  <span className="w-4 h-4 rounded-full bg-gray-200 text-gray-600 font-bold text-[10px] flex items-center justify-center leading-none">ⓘ</span>
                 </button>
-                <span className="text-xs text-gray-400">양식: 부품명 · 가격1 · 가격2 · 가격3</span>
+                {showFormatHint && (
+                  <div className="absolute right-0 top-full mt-1.5 z-30 bg-white border border-gray-200 rounded-xl shadow-lg p-3 w-52">
+                    <p className="text-xs font-semibold text-gray-700 mb-2">엑셀 파일 컬럼 양식</p>
+                    <div className="flex flex-col gap-1">
+                      {["부품명", "가격1", "가격2", "가격3"].map((col, i) => (
+                        <div key={col} className="flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 text-[10px] font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
+                          <span className="text-xs text-gray-700">{col}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-2">가격 열은 비워도 됩니다.</p>
+                  </div>
+                )}
               </div>
+              <button
+                onClick={() => { setModalOpen(true); setModalRows([{ id: 1, part: "", qty: "" }]); }}
+                className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                📝 직접 엑셀 만들기
+              </button>
               <button
                 onClick={downloadBatchExcel}
                 disabled={results.length === 0}
