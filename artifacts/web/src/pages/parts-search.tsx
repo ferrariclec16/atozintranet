@@ -257,7 +257,7 @@ export default function PartsSearch() {
             <div className="flex gap-2 items-center">
               <button
                 onClick={() => setShowSampleModal(true)}
-                className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-100 border border-gray-200 rounded-lg hover:bg-gray-200 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
               >
                 <span className="text-base">🗒️</span>
                 엑셀 양식 보기
