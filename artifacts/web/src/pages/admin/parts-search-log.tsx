@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Sidebar } from "@/components/layout/sidebar";
-import { Search, RefreshCw, User, Clock } from "lucide-react";
+import { Search, RefreshCw, User, Clock, Download } from "lucide-react";
 
 interface SearchLog {
   id: number;
@@ -10,6 +10,8 @@ interface SearchLog {
   searchType: string;
   query: string;
   resultCount: number;
+  fileName: string | null;
+  hasFile: boolean;
 }
 
 export default function PartsSearchLog() {
@@ -183,9 +185,22 @@ export default function PartsSearchLog() {
                           </span>
                         </td>
                         <td className="px-5 py-3.5">
-                          <code className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs font-mono">
-                            {log.query}
-                          </code>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <code className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs font-mono">
+                              {log.query}
+                            </code>
+                            {log.hasFile && log.fileName && (
+                              <a
+                                href={`${BASE}/api/admin/parts-search-log/${log.id}/download`}
+                                download={log.fileName}
+                                className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded transition-colors"
+                                title={log.fileName}
+                              >
+                                <Download className="w-3 h-3" />
+                                {log.fileName.length > 20 ? log.fileName.slice(0, 18) + "…" : log.fileName}
+                              </a>
+                            )}
+                          </div>
                         </td>
                         <td className="px-5 py-3.5 text-center">
                           <span className="text-sm font-semibold text-gray-700">

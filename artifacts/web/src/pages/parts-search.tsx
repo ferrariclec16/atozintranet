@@ -125,6 +125,30 @@ export default function PartsSearch() {
     }
   };
 
+  const logExcelSearch = async (
+    fileName: string,
+    fileBase64: string,
+    partCount: number,
+    resultCount: number
+  ) => {
+    try {
+      await fetch("/api/parts-search-log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          query: `엑셀 ${partCount}건`,
+          searchType: "엑셀 검색",
+          resultCount,
+          fileName,
+          fileBase64,
+        }),
+      });
+    } catch {
+      // 로그 오류는 무시
+    }
+  };
+
   const searchSingle = async () => {
     const part = partInput.trim();
     const qty = parseInt(qtyInput.replace(/,/g, "")) || 1;
@@ -139,8 +163,8 @@ export default function PartsSearch() {
     void logSearch(part, "단일 검색", offers.length);
   };
 
-  const processParts = async (parts: { partName: string; qty: number }[]) => {
-    if (parts.length === 0) return alert("유효한 데이터를 찾을 수 없습니다.");
+  const processParts = async (parts: { partName: string; qty: number }[]): Promise<number> => {
+    if (parts.length === 0) { alert("유효한 데이터를 찾을 수 없습니다."); return 0; }
     setLoading(true);
     setResults([]);
     setOpenIds(new Set());
@@ -152,7 +176,7 @@ export default function PartsSearch() {
     setResults(allResults);
     setOpenIds(new Set([0]));
     setLoading(false);
-    void logSearch(`엑셀 ${parts.length}건`, "엑셀 검색", allResults.length);
+    return allResults.length;
   };
 
   const setPendingFileFromList = (files: FileList | null) => {
@@ -169,7 +193,8 @@ export default function PartsSearch() {
     const file = pendingFile;
     const reader = new FileReader();
     reader.onload = async (e) => {
-      const data = new Uint8Array(e.target!.result as ArrayBuffer);
+      const arrayBuffer = e.target!.result as ArrayBuffer;
+      const data = new Uint8Array(arrayBuffer);
       const wb = XLSX.read(data, { type: "array" });
       const ws = wb.Sheets[wb.SheetNames[0]];
       const json = XLSX.utils.sheet_to_json(ws, { header: 1 }) as string[][];
@@ -204,7 +229,14 @@ export default function PartsSearch() {
           }
         }
       });
-      await processParts(parts);
+      const resultCount = await processParts(parts);
+
+      // 파일을 base64로 변환하여 로그에 저장
+      const bytes = new Uint8Array(arrayBuffer);
+      let binary = "";
+      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+      const fileBase64 = btoa(binary);
+      void logExcelSearch(file.name, fileBase64, parts.length, resultCount);
     };
     reader.readAsArrayBuffer(file);
   }, [pendingFile]);
