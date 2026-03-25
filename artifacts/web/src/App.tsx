@@ -17,6 +17,7 @@ import LicenseManage from "@/pages/admin/license-manage";
 import AccessLog from "@/pages/admin/access-log";
 import Security from "@/pages/admin/security";
 import DbUploadLog from "@/pages/admin/db-upload-log";
+import PartsSearchLog from "@/pages/admin/parts-search-log";
 import OrderProcessingLogPage from "@/pages/order-processing-log";
 
 const queryClient = new QueryClient();
@@ -103,6 +104,9 @@ function Router() {
       </Route>
       <Route path="/admin/db-upload-log">
         <AdminRoute component={DbUploadLog} />
+      </Route>
+      <Route path="/admin/parts-search-log">
+        <AdminRoute component={PartsSearchLog} />
       </Route>
       <Route path="/admin/security">
         <AdminRoute component={Security} />

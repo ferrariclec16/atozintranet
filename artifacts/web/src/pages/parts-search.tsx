@@ -112,6 +112,19 @@ export default function PartsSearch() {
     });
   };
 
+  const logSearch = async (query: string, searchType: string, resultCount: number) => {
+    try {
+      await fetch("/api/parts-search-log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ query, searchType, resultCount }),
+      });
+    } catch {
+      // 로그 오류는 무시
+    }
+  };
+
   const searchSingle = async () => {
     const part = partInput.trim();
     const qty = parseInt(qtyInput.replace(/,/g, "")) || 1;
@@ -123,6 +136,7 @@ export default function PartsSearch() {
     setResults([{ partName: part, qty, offers }]);
     setOpenIds(new Set([0]));
     setLoading(false);
+    void logSearch(part, "단일 검색", offers.length);
   };
 
   const processParts = async (parts: { partName: string; qty: number }[]) => {
@@ -138,6 +152,7 @@ export default function PartsSearch() {
     setResults(allResults);
     setOpenIds(new Set([0]));
     setLoading(false);
+    void logSearch(`엑셀 ${parts.length}건`, "엑셀 검색", allResults.length);
   };
 
   const setPendingFileFromList = (files: FileList | null) => {

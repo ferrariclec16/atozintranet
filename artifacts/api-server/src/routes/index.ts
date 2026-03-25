@@ -5,6 +5,7 @@ import adminRouter from "./admin";
 import partsRouter from "./parts";
 import purchaseHistoryRouter from "./purchase-history";
 import orderProcessingLogRouter from "./order-processing-log";
+import partsSearchLogRouter from "./parts-search-log";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(adminRouter);
 router.use(partsRouter);
 router.use(purchaseHistoryRouter);
 router.use(orderProcessingLogRouter);
+router.use(partsSearchLogRouter);
 
 export default router;

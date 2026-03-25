@@ -30,6 +30,7 @@ const commonNavItems: NavItem[] = [
 
 const adminNavItems: NavItem[] = [
   { href: "/admin/access-log", label: "접속 기록", icon: <ClipboardList className="w-4 h-4 flex-shrink-0" /> },
+  { href: "/admin/parts-search-log", label: "부품검색 기록", icon: <Search className="w-4 h-4 flex-shrink-0" /> },
   { href: "/admin/db-upload-log", label: "DB 업로드 기록", icon: <Upload className="w-4 h-4 flex-shrink-0" /> },
 ];
 
