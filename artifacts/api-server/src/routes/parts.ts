@@ -1,50 +1,53 @@
 import { Router } from "express";
 import ExcelJS from "exceljs";
-import fs from "fs";
-import path from "path";
+import { Pool } from "pg";
 
 const router = Router();
 
 const NEXAR_CLIENT_ID = process.env.NEXAR_CLIENT_ID!;
 const NEXAR_CLIENT_SECRET = process.env.NEXAR_CLIENT_SECRET!;
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
-const CACHE_FILE = path.join(process.cwd(), ".cache", "parts-cache.json");
 
-// ── 파일 기반 캐시 (재시작해도 12시간 유지) ──────────────────────
-interface CacheEntry { data: unknown; cachedAt: number; }
-type CacheStore = Record<string, CacheEntry>;
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
-function loadCache(): CacheStore {
+// ── PostgreSQL 기반 캐시 (배포 후에도 12시간 유지) ──────────────
+pool.query(`
+  CREATE TABLE IF NOT EXISTS parts_cache (
+    cache_key  TEXT PRIMARY KEY,
+    data       JSONB NOT NULL,
+    cached_at  BIGINT NOT NULL
+  )
+`).then(async () => {
+  const { rows } = await pool.query(`SELECT COUNT(*) AS cnt FROM parts_cache WHERE cached_at > $1`, [Date.now() - CACHE_TTL_MS]);
+  console.log(`[캐시 로드] ${rows[0].cnt}개 부품 캐시 복원 (DB)`);
+}).catch((e) => console.error("[parts_cache 테이블 생성 실패]", e));
+
+async function getCached(key: string): Promise<{ data: unknown; cachedAt: number } | null> {
   try {
-    fs.mkdirSync(path.dirname(CACHE_FILE), { recursive: true });
-    if (fs.existsSync(CACHE_FILE)) {
-      return JSON.parse(fs.readFileSync(CACHE_FILE, "utf-8")) as CacheStore;
-    }
-  } catch { /* 캐시 파일 없음 — 새로 시작 */ }
-  return {};
-}
-
-function saveCache(store: CacheStore): void {
-  try {
-    fs.mkdirSync(path.dirname(CACHE_FILE), { recursive: true });
-    fs.writeFileSync(CACHE_FILE, JSON.stringify(store), "utf-8");
-  } catch (e) {
-    console.error("[캐시 저장 실패]", e);
+    const { rows } = await pool.query(
+      `SELECT data, cached_at FROM parts_cache WHERE cache_key = $1`,
+      [key]
+    );
+    if (rows.length === 0) return null;
+    const cachedAt = Number(rows[0].cached_at);
+    if (Date.now() - cachedAt > CACHE_TTL_MS) return null;
+    return { data: rows[0].data, cachedAt };
+  } catch {
+    return null;
   }
 }
 
-const cacheStore: CacheStore = loadCache();
-console.log(`[캐시 로드] ${Object.keys(cacheStore).length}개 부품 캐시 복원`);
-
-function getCached(key: string): CacheEntry | null {
-  const entry = cacheStore[key];
-  if (entry && Date.now() - entry.cachedAt < CACHE_TTL_MS) return entry;
-  return null;
-}
-
-function setCached(key: string, data: unknown): void {
-  cacheStore[key] = { data, cachedAt: Date.now() };
-  saveCache(cacheStore);
+async function setCached(key: string, data: unknown): Promise<void> {
+  try {
+    await pool.query(
+      `INSERT INTO parts_cache (cache_key, data, cached_at)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (cache_key) DO UPDATE SET data = $2, cached_at = $3`,
+      [key, JSON.stringify(data), Date.now()]
+    );
+  } catch (e) {
+    console.error("[캐시 저장 실패]", e);
+  }
 }
 
 // ── Nexar API ─────────────────────────────────────────────────────
@@ -91,7 +94,7 @@ router.post("/parts/search", async (req, res) => {
   if (!part_number) return res.status(400).json({ status: "error", message: "부품 번호를 입력해주세요." });
 
   const cacheKey = part_number.trim().toLowerCase();
-  const cached = getCached(cacheKey);
+  const cached = await getCached(cacheKey);
   if (cached) {
     const ageMin = Math.round((Date.now() - cached.cachedAt) / 60000);
     console.log(`[캐시 HIT] ${part_number} (${ageMin}분 전 캐시)`);
@@ -108,7 +111,7 @@ router.post("/parts/search", async (req, res) => {
     });
     if (!response.ok) throw new Error(`Nexar API 오류: ${response.status}`);
     const data = await response.json();
-    setCached(cacheKey, data);
+    await setCached(cacheKey, data);
     return res.json({ status: "success", data, cached: false });
   } catch (error: unknown) {
     return res.status(500).json({ status: "error", message: error instanceof Error ? error.message : "알 수 없는 오류" });
