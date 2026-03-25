@@ -11,16 +11,27 @@ const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 // ── PostgreSQL 기반 캐시 (배포 후에도 12시간 유지) ──────────────
-pool.query(`
-  CREATE TABLE IF NOT EXISTS parts_cache (
-    cache_key  TEXT PRIMARY KEY,
-    data       JSONB NOT NULL,
-    cached_at  BIGINT NOT NULL
-  )
-`).then(async () => {
-  const { rows } = await pool.query(`SELECT COUNT(*) AS cnt FROM parts_cache WHERE cached_at > $1`, [Date.now() - CACHE_TTL_MS]);
+async function initCache() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS parts_cache (
+      cache_key  TEXT PRIMARY KEY,
+      data       JSONB NOT NULL,
+      cached_at  TEXT NOT NULL
+    )
+  `);
+  // BIGINT→TEXT 마이그레이션 (이전 버전 호환)
+  await pool.query(`
+    ALTER TABLE parts_cache ALTER COLUMN cached_at TYPE TEXT USING cached_at::TEXT
+  `).catch(() => { /* 이미 TEXT이면 무시 */ });
+
+  const minAt = String(Date.now() - CACHE_TTL_MS);
+  const { rows } = await pool.query(
+    `SELECT COUNT(*) AS cnt FROM parts_cache WHERE cached_at > $1`,
+    [minAt]
+  );
   console.log(`[캐시 로드] ${rows[0].cnt}개 부품 캐시 복원 (DB)`);
-}).catch((e) => console.error("[parts_cache 테이블 생성 실패]", e));
+}
+initCache().catch((e) => console.error("[parts_cache 초기화 실패]", e));
 
 async function getCached(key: string): Promise<{ data: unknown; cachedAt: number } | null> {
   try {
@@ -43,7 +54,7 @@ async function setCached(key: string, data: unknown): Promise<void> {
       `INSERT INTO parts_cache (cache_key, data, cached_at)
        VALUES ($1, $2, $3)
        ON CONFLICT (cache_key) DO UPDATE SET data = $2, cached_at = $3`,
-      [key, JSON.stringify(data), Date.now()]
+      [key, JSON.stringify(data), String(Date.now())]
     );
   } catch (e) {
     console.error("[캐시 저장 실패]", e);
